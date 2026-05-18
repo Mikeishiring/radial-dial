@@ -77,6 +77,15 @@ export function PathLine({
       // slot appears/disappears, using Framer's FLIP-via-transform under the
       // hood (transforms only — no animated layout properties). Issue #292.
       layout
+      // ARIA: the path-line composes a single sentence (≈ count → projection
+      // label · breadcrumb). aria-live="polite" announces the WHOLE sentence
+      // on commit/undo, aria-atomic="true" ensures it reads as one unit not
+      // fragment-by-fragment. role="status" so screen readers handle it as
+      // a passive status update, not a navigation event. Issue #25.
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-label="Current selection"
       className={`absolute left-1/2 z-20 -translate-x-1/2 flex items-baseline ${interactive ? '' : 'pointer-events-none'}`}
       style={{ top: 56, gap: 0 }}
     >

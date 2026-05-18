@@ -67,7 +67,7 @@ export function ChildCountDots({
               height: dotSize,
               borderRadius: '50%',
               background: dotColor,
-              transition: `background 180ms cubic-bezier(0.22, 1, 0.36, 1)`,
+              transition: `background 180ms cubic-bezier(${SMOOTH_OUT.join(',')})`,
             }}
           />
         );
@@ -589,6 +589,7 @@ export function IdleGhost({
   onSelect,
   breathing = true,
   reduceMotion = false,
+  focused = false,
 }: {
   pos: Vec;
   label: string;
@@ -602,6 +603,8 @@ export function IdleGhost({
   breathing?: boolean;
   /** Honor prefers-reduced-motion — no breath when true. */
   reduceMotion?: boolean;
+  /** Keyboard-focused (arrow-key cycling). Applies a visible focus ring. Issue #26. */
+  focused?: boolean;
 }) {
   const isLight = theme.mode === 'light';
   // 45–85% opacity range — these are real affordances, not transient previews.
@@ -628,10 +631,17 @@ export function IdleGhost({
         width: OPTION_DIAMETER,
         height: OPTION_DIAMETER,
         borderRadius: '50%',
-        background: mix(theme.paper, isLight ? 60 : 50, theme.paper),
-        boxShadow: `inset 0 0 0 1.5px ${mix(theme.ink, isLight ? 14 : 22)}`,
-        color: mix(theme.ink, 70),
-        zIndex: 4,
+        background: focused
+          ? mixTwo(theme.paper, 88, theme.accent, 6)
+          : mix(theme.paper, isLight ? 60 : 50, theme.paper),
+        // Keyboard-focused ring matches hover style for consistency. Issue #26.
+        boxShadow: focused
+          ? `inset 0 0 0 1.5px ${mix(theme.accent, 60)}, 0 0 0 2px ${mix(theme.accent, 30)}, 0 4px 14px ${mix(theme.accent, 18)}`
+          : `inset 0 0 0 1.5px ${mix(theme.ink, isLight ? 14 : 22)}`,
+        color: focused
+          ? mixTwo(theme.accent, 80, theme.ink, 20)
+          : mix(theme.ink, 70),
+        zIndex: focused ? 5 : 4,
         border: 'none',
         padding: 0,
         cursor: interactive ? 'pointer' : 'default',

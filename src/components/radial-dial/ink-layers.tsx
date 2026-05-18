@@ -10,6 +10,7 @@ import {
   ACTIVE_TRIM_RADIUS,
   EXPO_OUT,
   INK_BASE_WIDTH,
+  OVERSHOOT,
   SETTLE_DURATION_MS,
   SETTLED_TRIM_RADIUS,
   SMOOTH_OUT,
@@ -101,7 +102,7 @@ export function FrozenStrokeLayer({
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: ageFade, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+      transition={{ duration: 0.5, ease: OVERSHOOT }}
     >
       <StrokeSegments points={trimmed} theme={theme} widthMultiplier={settleScale} />
       <StrokeDrawIn points={trimmed} theme={theme} />

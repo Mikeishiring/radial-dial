@@ -1,19 +1,31 @@
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   RadialDial,
   PAPER_THEME,
   ALL_THEMES,
   mix,
+  EXPO_OUT,
+  SMOOTH_OUT,
 } from '@mikeishiring/radial-dial';
 import type {
   DialNode,
+  DialPathPayload,
   RadialDialTheme,
 } from '@mikeishiring/radial-dial';
 
 // =============================================================================
 // Demo page — consumes the RadialDial template.
-// The page itself stays thin: it owns the tree data, picks a theme, and
-// hands everything to <RadialDial />.
+//
+// Layout: full-bleed dial fills the viewport, with a thin chrome layer:
+//   - Top-left intro card (what is this?)
+//   - Top-right theme switcher (wired through the dial's toolbar slot)
+//   - Bottom-right footer with repo link
+//   - Centre-bottom "last applied" pill (appears for 5s after Apply)
+//
+// The page is intentionally minimal — the dial itself is the show. Framing
+// gives a first-time visitor enough scaffolding to know what to do, then
+// gets out of the way.
 // =============================================================================
 
 const TREE: DialNode = {
@@ -108,26 +120,212 @@ const TREE: DialNode = {
 
 export function RadialDialPage() {
   const [theme, setTheme] = useState<RadialDialTheme>(PAPER_THEME);
+  // The last-applied payload — shown in a toast that auto-dismisses.
+  const [lastApplied, setLastApplied] = useState<DialPathPayload | null>(null);
 
   return (
-    <div className="h-[calc(100vh-64px)] w-full">
+    <div
+      style={{
+        width: '100vw',
+        height: '100vh',
+        position: 'relative',
+        overflow: 'hidden',
+        background: theme.paper,
+      }}
+    >
       <RadialDial
         tree={TREE}
         theme={theme}
-        title="radial · template"
-        hint=""
+        title="radial · dial"
+        hint="press, draw a line, release."
         countLabel="jobs"
         total={28_400}
-        onComplete={({ nodes }: { nodes: DialNode[] }) => {
-          // Consumer hooks here — e.g. navigate, fire analytics, build a query.
+        onComplete={({ nodes }) => {
+          // Fired automatically on release with any committed path. The Apply
+          // CTA is a separate explicit confirmation step (below).
           if (typeof window !== 'undefined') {
             // eslint-disable-next-line no-console
-            console.info('[RadialDial] complete:', nodes.map((n: DialNode) => n.label).join(' › '));
+            console.info(
+              '[RadialDial] complete:',
+              nodes.map((n: DialNode) => n.label).join(' › '),
+            );
           }
         }}
+        onApply={(payload: DialPathPayload) => {
+          // Explicit "apply" — slide toast in, auto-dismiss after 5s.
+          setLastApplied(payload);
+          window.setTimeout(() => {
+            setLastApplied(prev => (prev === payload ? null : prev));
+          }, 5000);
+        }}
+        applyLabel="APPLY"
         toolbar={<ThemeSwitcher theme={theme} onChange={setTheme} />}
       />
+
+      {/* Intro card — bottom-left, fades to translucent on idle to stay
+          out of the way. The dial's own title sits top-left so this gives
+          the user something to read while figuring out the gesture. */}
+      <IntroCard theme={theme} />
+
+      {/* Last-applied toast — slides up from the bottom centre. */}
+      <AnimatePresence>
+        {lastApplied && (
+          <AppliedToast key="toast" payload={lastApplied} theme={theme} />
+        )}
+      </AnimatePresence>
+
+      {/* Footer link to the repo — bottom-right, very small. */}
+      <FooterLink theme={theme} />
     </div>
+  );
+}
+
+// =============================================================================
+// IntroCard — discoverability copy for first-time visitors.
+// Three-line composition: what + how + key gestures.
+// =============================================================================
+function IntroCard({ theme }: { theme: RadialDialTheme }) {
+  const isLight = theme.mode === 'light';
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 32,
+        bottom: 32,
+        zIndex: 25,
+        maxWidth: 280,
+        pointerEvents: 'none',
+        fontFamily: theme.serif,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.22em',
+          textTransform: 'uppercase',
+          fontFamily: theme.mono,
+          color: mix(theme.ink, isLight ? 45 : 55),
+          marginBottom: 6,
+        }}
+      >
+        DEMO
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          fontStyle: 'italic',
+          color: mix(theme.ink, isLight ? 65 : 65),
+          letterSpacing: '-0.005em',
+          lineHeight: 1.45,
+        }}
+      >
+        A hierarchical marking-menu dial. Click any option, or press
+        the centre and drag toward one. Keep drawing to commit the
+        next level. Escape to back out.
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// AppliedToast — slides up from the bottom centre showing the path
+// that was just applied. Auto-dismisses (parent state). Issue #12 visualised.
+// =============================================================================
+function AppliedToast({
+  payload,
+  theme,
+}: {
+  payload: DialPathPayload;
+  theme: RadialDialTheme;
+}) {
+  const isLight = theme.mode === 'light';
+  const pathStr = payload.nodes.map(n => n.label).join(' › ');
+  return (
+    <motion.div
+      style={{
+        position: 'absolute',
+        bottom: 64,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 26,
+        padding: '10px 18px',
+        background: mix(theme.ink, isLight ? 90 : 80, theme.paper),
+        color: theme.paper,
+        borderRadius: 999,
+        boxShadow: `0 8px 24px ${mix(theme.ink, isLight ? 14 : 36)}`,
+        fontFamily: theme.mono,
+        fontSize: 12,
+        letterSpacing: '0.04em',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+      }}
+      initial={{ opacity: 0, y: 16, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 8, scale: 0.96 }}
+      transition={{
+        opacity: { duration: 0.3, ease: EXPO_OUT },
+        y: { duration: 0.3, ease: EXPO_OUT },
+        scale: { duration: 0.3, ease: EXPO_OUT },
+        exit: { duration: 0.25, ease: SMOOTH_OUT },
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          color: mix(theme.accent, 90, theme.paper),
+        }}
+      >
+        APPLIED
+      </span>
+      <span style={{ opacity: 0.4 }}>—</span>
+      <span style={{ fontFamily: theme.serif, fontStyle: 'italic', fontSize: 13 }}>
+        {pathStr}
+      </span>
+      {payload.count !== undefined && (
+        <>
+          <span style={{ opacity: 0.4 }}>·</span>
+          <span style={{ fontFeatureSettings: '"tnum" 1' }}>
+            {Math.round(payload.count).toLocaleString('en-US')} matches
+          </span>
+        </>
+      )}
+    </motion.div>
+  );
+}
+
+// =============================================================================
+// FooterLink — tiny mono-spaced link to the repo. Bottom-right.
+// =============================================================================
+function FooterLink({ theme }: { theme: RadialDialTheme }) {
+  const isLight = theme.mode === 'light';
+  return (
+    <a
+      href="https://github.com/Mikeishiring/radial-dial"
+      target="_blank"
+      rel="noreferrer noopener"
+      style={{
+        position: 'absolute',
+        right: 32,
+        bottom: 32,
+        zIndex: 25,
+        fontSize: 10,
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        fontFamily: theme.mono,
+        color: mix(theme.ink, isLight ? 45 : 55),
+        textDecoration: 'none',
+        transition: 'color 200ms cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
+      onMouseEnter={e => (e.currentTarget.style.color = theme.accent)}
+      onMouseLeave={e =>
+        (e.currentTarget.style.color = mix(theme.ink, isLight ? 45 : 55))
+      }
+    >
+      Mikeishiring/radial-dial ↗
+    </a>
   );
 }
 
@@ -143,8 +341,9 @@ function ThemeSwitcher({
 }) {
   return (
     <div
-      className="flex items-center"
       style={{
+        display: 'flex',
+        alignItems: 'center',
         padding: 3,
         gap: 0,
         background: mix(theme.ink, theme.mode === 'light' ? 4 : 8, theme.paper),
@@ -209,8 +408,6 @@ function RoleIcon() {
       strokeWidth={ICON_STROKE}
       strokeLinecap="round"
       strokeLinejoin="round"
-      // Tailwind preflight + flex column shrink the SVG below its width attr;
-      // explicit style + flex-shrink-0 forces the icon to render at full size.
       style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
     >
       {/* chair back */}
@@ -236,11 +433,8 @@ function SeniorityIcon() {
       strokeWidth={ICON_STROKE}
       strokeLinecap="round"
       strokeLinejoin="round"
-      // Tailwind preflight + flex column shrink the SVG below its width attr;
-      // explicit style + flex-shrink-0 forces the icon to render at full size.
       style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
     >
-      {/* three ascending steps */}
       <path d="M3.5 19.5 L 8 19.5 L 8 14.5 L 13 14.5 L 13 9.5 L 18 9.5 L 18 4.5 L 21 4.5" />
     </svg>
   );
@@ -257,13 +451,9 @@ function SalaryIcon() {
       strokeWidth={ICON_STROKE}
       strokeLinecap="round"
       strokeLinejoin="round"
-      // Tailwind preflight + flex column shrink the SVG below its width attr;
-      // explicit style + flex-shrink-0 forces the icon to render at full size.
       style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
     >
-      {/* extended stem — the calligraphic flourish */}
       <path d="M12 3 L 12 21" />
-      {/* the S-curve, hand-drawn with quadratic bezier flow */}
       <path d="M16.5 7 Q 12 5 8.5 7 Q 5.2 9 8.4 11.4 Q 11.5 13.4 15 14.6 Q 18 16 15 19 Q 12 20.8 7.8 18.8" />
     </svg>
   );
@@ -280,19 +470,13 @@ function StageIcon() {
       strokeWidth={ICON_STROKE}
       strokeLinecap="round"
       strokeLinejoin="round"
-      // Tailwind preflight + flex column shrink the SVG below its width attr;
-      // explicit style + flex-shrink-0 forces the icon to render at full size.
       style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
     >
-      {/* sides + base of tower */}
       <path d="M8 21 L 8 9.5" />
       <path d="M16 21 L 16 9.5" />
       <path d="M7 21 L 17 21" />
-      {/* triangular roof */}
       <path d="M6.5 9.5 L 12 4 L 17.5 9.5" />
-      {/* small window dot */}
       <circle cx="12" cy="14.5" r="0.9" fill="currentColor" stroke="none" />
     </svg>
   );
 }
-

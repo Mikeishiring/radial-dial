@@ -9,9 +9,16 @@ export default defineConfig({
   root: __dirname,
   plugins: [react()],
   resolve: {
-    alias: {
-      '@mikeishiring/radial-dial': resolve(__dirname, '../src/index.ts'),
-    },
+    alias: [
+      {
+        find: '@mikeishiring/radial-dial/styles.css',
+        replacement: resolve(__dirname, '../src/styles.css'),
+      },
+      {
+        find: '@mikeishiring/radial-dial',
+        replacement: resolve(__dirname, '../src/index.ts'),
+      },
+    ],
   },
   server: {
     port: 5173,

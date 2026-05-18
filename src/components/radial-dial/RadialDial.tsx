@@ -282,38 +282,19 @@ export function RadialDial({
     const nodes = dial.path.slice(1).map(p => p.node);
     onApply({ nodes, count: count ?? undefined });
   }, [onApply, dial.path, count]);
-  // Keyboard handler — Escape pops one level (back-out navigation), matching
-  // standard menu-widget conventions. Enter applies when committed.
-  // ArrowKey cycling is a separate issue (#26) handled at the option-fan
-  // level. Issues #11, #12.
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Escape' && dial.path.length > 1) {
-        e.preventDefault();
-        dial.popToLevel(dial.path.length - 2);
-        return;
-      }
-      if (e.key === 'Enter' && dial.phase === 'committed' && onApply) {
-        e.preventDefault();
-        applyCurrent();
-      }
-    },
-    [dial, onApply, applyCurrent],
+
+  // Keyboard-focused option index for arrow-key navigation. Null = no
+  // keyboard focus; first arrow press sets to 0. Resets on phase change
+  // or path change because the option set changes. Issue #26.
+  const [focusedOptionIndex, setFocusedOptionIndex] = useState<number | null>(
+    null,
   );
+  useEffect(() => {
+    setFocusedOptionIndex(null);
+  }, [dial.phase, dial.path.length]);
 
-  // Idle-hover proximity: 1.0 when cursor is on the root, 0 at 200px+ away.
-  // Drives the sneak-peek ghost fan + the idle hint fade.
-  const idleHoverProximity = useMemo(() => {
-    if (!idleHover || dial.phase !== 'idle') return 0;
-    const dist = Math.hypot(idleHover.x - idleAnchor.x, idleHover.y - idleAnchor.y);
-    return Math.max(0, 1 - dist / 200);
-  }, [idleHover, idleAnchor, dial.phase]);
-
-  // Always-visible options — the available children of the current "place"
-  // (idle root, or whatever's been committed) rendered as faintly-visible
-  // CLICKABLE bubbles. This is the single biggest cognitive-load drop:
-  // users see their choices without having to discover the press-and-drag.
-  // Click any → commits directly. Drag still works as the speed-mode bonus.
+  // Always-visible options — computed early because the keyboard handler
+  // (below) needs to reach them for arrow-key cycling.
   //
   // - Phase 'idle'      → tree.children (level-1 categories)
   // - Phase 'committed' → activeEntry.children (next level after last commit)
@@ -329,6 +310,102 @@ export function RadialDial({
     const positions = placeChildren(anchor, grandparent, children.length, fanRadius);
     return children.map((node, i) => ({ node, pos: positions[i] }));
   }, [dial.phase, dial.activeEntry, dial.path, tree, idleAnchor, fanRadius]);
+  // Keyboard handler — Escape pops one level (back-out navigation).
+  // Enter applies (committed) OR commits focused option.
+  // ArrowLeft/Right cycle the focused option clockwise/counter-clockwise.
+  // ArrowUp focuses the option closest to 12 o'clock.
+  // ArrowDown commits the focused option.
+  // Issues #11, #12, #26.
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // Escape — back out one level.
+      if (e.key === 'Escape' && dial.path.length > 1) {
+        e.preventDefault();
+        dial.popToLevel(dial.path.length - 2);
+        setFocusedOptionIndex(null);
+        return;
+      }
+      // Don't capture arrow keys / enter mid-drag — drag owns input.
+      if (dial.phase === 'drawing') return;
+
+      const options = persistentOptions ?? [];
+      const len = options.length;
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (len === 0) return;
+        e.preventDefault();
+        const dir = e.key === 'ArrowRight' ? 1 : -1;
+        setFocusedOptionIndex(prev => {
+          if (prev === null) return dir === 1 ? 0 : len - 1;
+          return (prev + dir + len) % len;
+        });
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        if (len === 0) return;
+        e.preventDefault();
+        // Pick the option whose position is closest to the 12 o'clock
+        // direction (i.e. smallest |x - anchor.x| with y < anchor.y).
+        const anchor = dial.activeEntry?.pos ?? idleAnchor;
+        let best = 0;
+        let bestScore = Infinity;
+        options.forEach((opt, i) => {
+          const dx = Math.abs(opt.pos.x - anchor.x);
+          const dy = opt.pos.y - anchor.y;
+          // Score: horizontal distance + heavy penalty for being below.
+          const score = dx + (dy > 0 ? 1000 + dy : dy * -0.5);
+          if (score < bestScore) {
+            bestScore = score;
+            best = i;
+          }
+        });
+        setFocusedOptionIndex(best);
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        if (focusedOptionIndex === null || len === 0) return;
+        e.preventDefault();
+        const opt = options[focusedOptionIndex];
+        if (opt) dial.selectChild(opt.node, opt.pos);
+        setFocusedOptionIndex(null);
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        // Priority 1: if a keyboard-focused option exists, commit it.
+        if (focusedOptionIndex !== null && len > 0) {
+          e.preventDefault();
+          const opt = options[focusedOptionIndex];
+          if (opt) dial.selectChild(opt.node, opt.pos);
+          setFocusedOptionIndex(null);
+          return;
+        }
+        // Priority 2: if committed and consumer wired Apply, fire it.
+        if (dial.phase === 'committed' && onApply) {
+          e.preventDefault();
+          applyCurrent();
+        }
+      }
+    },
+    [
+      dial,
+      onApply,
+      applyCurrent,
+      persistentOptions,
+      idleAnchor,
+      focusedOptionIndex,
+    ],
+  );
+
+  // Idle-hover proximity: 1.0 when cursor is on the root, 0 at 200px+ away.
+  // Drives the sneak-peek ghost fan + the idle hint fade.
+  const idleHoverProximity = useMemo(() => {
+    if (!idleHover || dial.phase !== 'idle') return 0;
+    const dist = Math.hypot(idleHover.x - idleAnchor.x, idleHover.y - idleAnchor.y);
+    return Math.max(0, 1 - dist / 200);
+  }, [idleHover, idleAnchor, dial.phase]);
 
   // Concatenate every frozen stroke + the live stroke into one SVG path
   // string, used by TravelingPulse to flow a single directional dash
@@ -707,6 +784,7 @@ export function RadialDial({
                 onSelect={() => dial.selectChild(c.node, idleAnchor)}
                 breathing={dial.phase === 'idle'}
                 reduceMotion={reduceMotion}
+                focused={focusedOptionIndex === i}
               />
             ))}
         </AnimatePresence>

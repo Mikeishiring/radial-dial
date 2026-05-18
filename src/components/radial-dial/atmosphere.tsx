@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { m } from 'framer-motion';
-import { OVERSHOOT, SMOOTH_OUT } from './geometry';
+import { EXPO_OUT, OVERSHOOT, SMOOTH_OUT } from './geometry';
 import { mix } from './themes';
 import type { DialPathEntry, RadialDialTheme, Vec } from './types';
 
@@ -269,7 +269,7 @@ function BurstLayer({ burst, theme }: { burst: Burst; theme: RadialDialTheme }) 
             animate={{ x: dx, y: dy, opacity: 0, scale: 0.4 }}
             transition={{
               duration: 0.6 + Math.random() * 0.15,
-              ease: [0.19, 1, 0.22, 1], // expo-out — fast initial, gentle tail
+              ease: EXPO_OUT, // expo-out — fast initial, gentle tail
             }}
           />
         );
@@ -315,7 +315,7 @@ export function AmbientRipple({ pos, theme }: { pos: Vec; theme: RadialDialTheme
           }}
           initial={{ scale: 0.6, opacity: 0.6 }}
           animate={{ scale: 4, opacity: 0 }}
-          transition={{ duration: 1.8, ease: [0.19, 1, 0.22, 1] }}
+          transition={{ duration: 1.8, ease: EXPO_OUT }}
         />
       ))}
     </>
@@ -521,7 +521,7 @@ export function IdleMotes({
           }}
           initial={{ opacity: 0, x: 0, y: 0 }}
           animate={{ opacity: [0, 0.18, 0], x: mote.dx, y: mote.dy }}
-          transition={{ duration: 4.2, ease: [0.22, 1, 0.36, 1], times: [0, 0.4, 1] }}
+          transition={{ duration: 4.2, ease: SMOOTH_OUT, times: [0, 0.4, 1] }}
         />
       ))}
     </>
