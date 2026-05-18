@@ -372,18 +372,31 @@ export function useRadialDial({
       );
       const newPos = positions[childIdx];
 
-      // Synthesize a straight-line stroke between previous active and new
-      // active so the visual path looks coherent (no jump between bubbles).
-      const N = 8;
+      // Synthesize a stroke between previous active and new active that
+      // feels DRAWN, not teleported. Three ingredients (Issue #24):
+      //   1. Slight perpendicular arc (curve_factor of ~6% of length) so
+      //      the line has visual character — straight lines look mechanical.
+      //   2. Slow-fast-slow velocity profile (sine envelope) so the StrokeDrawIn
+      //      animation has variation to render through.
+      //   3. More points (16 instead of 8) for smoother curve resolution.
+      const N = 16;
       const synthesizedPoints: InkPoint[] = [];
+      const dx = newPos.x - liveActive.pos.x;
+      const dy = newPos.y - liveActive.pos.y;
+      const len = Math.hypot(dx, dy);
+      // Perpendicular unit vector for the arc bow.
+      const perpX = len > 0 ? -dy / len : 0;
+      const perpY = len > 0 ? dx / len : 0;
+      const curveFactor = len * 0.06;  // arc bow ~6% of length
       for (let i = 0; i <= N; i++) {
         const t = i / N;
-        synthesizedPoints.push({
-          x: liveActive.pos.x + (newPos.x - liveActive.pos.x) * t,
-          y: liveActive.pos.y + (newPos.y - liveActive.pos.y) * t,
-          t: now + i,
-          v: 0.3,
-        });
+        // Quadratic bezier: bowed curve through midpoint.
+        const bow = Math.sin(t * Math.PI) * curveFactor;
+        const x = liveActive.pos.x + dx * t + perpX * bow;
+        const y = liveActive.pos.y + dy * t + perpY * bow;
+        // Velocity envelope: 0.1 at endpoints, 0.55 at midpoint.
+        const v = 0.1 + Math.sin(t * Math.PI) * 0.45;
+        synthesizedPoints.push({ x, y, t: now + i * 8, v });
       }
 
       const newEntry = { node: childNode, pos: newPos };

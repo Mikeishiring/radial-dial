@@ -218,12 +218,17 @@ export function CommitParticles({
     const last = path[path.length - 1];
     if (!last) return;
 
-    const count = 6 + Math.floor(Math.random() * 2);
+    // Issue #21 — BurstLayer was competing visually with CommitWave + the new
+    // SettleRipples (the "water" stories). Dialled DOWN to: fewer particles
+    // (4-5 instead of 6-7), tighter size range, slightly shorter speed. The
+    // burst should accent the commit, not headline it. PaperWarp + ripples
+    // do the heavy lifting now.
+    const count = 4 + Math.floor(Math.random() * 2);
     const baseAngleStep = (Math.PI * 2) / count;
     const particles: Particle[] = Array.from({ length: count }, (_, i) => ({
       angle: i * baseAngleStep + (Math.random() - 0.5) * 0.5,
-      speed: 36 + Math.random() * 22,
-      size: 1.8 + Math.random() * 1.6,
+      speed: 30 + Math.random() * 18,
+      size: 1.4 + Math.random() * 1.0,
     }));
     const burst: Burst = {
       id: `burst-${last.node.id}-${performance.now()}`,
@@ -265,10 +270,13 @@ function BurstLayer({ burst, theme }: { burst: Burst; theme: RadialDialTheme }) 
               background: theme.accent,
               zIndex: 5,
             }}
-            initial={{ x: 0, y: 0, opacity: 0.85, scale: 1 }}
+            // Lower starting opacity (0.5 vs prior 0.85) so the burst is
+            // an accent on top of CommitWave + SettleRipples, not their
+            // competitor. Issue #21.
+            initial={{ x: 0, y: 0, opacity: 0.5, scale: 1 }}
             animate={{ x: dx, y: dy, opacity: 0, scale: 0.4 }}
             transition={{
-              duration: 0.6 + Math.random() * 0.15,
+              duration: 0.55 + Math.random() * 0.12,
               ease: EXPO_OUT, // expo-out — fast initial, gentle tail
             }}
           />
