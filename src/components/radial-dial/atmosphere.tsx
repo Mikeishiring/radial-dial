@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { m } from 'framer-motion';
-import { SMOOTH_OUT } from './geometry';
+import { OVERSHOOT, SMOOTH_OUT } from './geometry';
 import { mix } from './themes';
 import type { DialPathEntry, RadialDialTheme, Vec } from './types';
 
@@ -316,6 +316,107 @@ export function AmbientRipple({ pos, theme }: { pos: Vec; theme: RadialDialTheme
           initial={{ scale: 0.6, opacity: 0.6 }}
           animate={{ scale: 4, opacity: 0 }}
           transition={{ duration: 1.8, ease: [0.19, 1, 0.22, 1] }}
+        />
+      ))}
+    </>
+  );
+}
+
+// =============================================================================
+// FirstRunHint — discoverability arc for the press-and-drag gesture.
+//
+// New users tap, see the options, and never discover that drawing a line
+// commits faster. This component shows a faint dotted arc from the root
+// toward a target option after 3s of idle on first visit. One-shot only:
+// localStorage flag `radial-dial-hint-seen` suppresses on subsequent loads.
+// 8s total lifecycle: 3s wait, fade in (OVERSHOOT), hold, fade out (SMOOTH_OUT).
+// Skipped under prefers-reduced-motion. Issue #9.
+// =============================================================================
+const HINT_STORAGE_KEY = 'radial-dial-hint-seen';
+
+export function FirstRunHint({
+  rootPos,
+  targetPos,
+  theme,
+  reduceMotion,
+}: {
+  rootPos: Vec;
+  targetPos: Vec;
+  theme: RadialDialTheme;
+  reduceMotion: boolean;
+}) {
+  const [phase, setPhase] = useState<'pending' | 'showing' | 'done'>('pending');
+  useEffect(() => {
+    if (reduceMotion) {
+      setPhase('done');
+      return;
+    }
+    // Bail out if user has seen this before. localStorage may not exist (SSR,
+    // sandboxed iframe, private mode) — wrap in try/catch.
+    try {
+      if (typeof window !== 'undefined' && window.localStorage?.getItem(HINT_STORAGE_KEY)) {
+        setPhase('done');
+        return;
+      }
+    } catch {
+      // Storage unavailable — still show the hint, just don't persist.
+    }
+    const showT = setTimeout(() => setPhase('showing'), 3000);
+    const doneT = setTimeout(() => {
+      setPhase('done');
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage?.setItem(HINT_STORAGE_KEY, '1');
+        }
+      } catch {
+        // ignore
+      }
+    }, 3000 + 5200);  // 3s wait + ~5s of fade-in/hold/fade-out
+    return () => {
+      clearTimeout(showT);
+      clearTimeout(doneT);
+    };
+  }, [reduceMotion]);
+
+  if (phase !== 'showing') return null;
+
+  // Three dots evenly along the line from root to target. Each animates
+  // in with a small stagger to suggest direction of motion.
+  const DOT_COUNT = 4;
+  const dots = Array.from({ length: DOT_COUNT }, (_, i) => {
+    const t = (i + 1) / (DOT_COUNT + 1);
+    return {
+      x: rootPos.x + (targetPos.x - rootPos.x) * t,
+      y: rootPos.y + (targetPos.y - rootPos.y) * t,
+      stagger: i * 0.08,
+    };
+  });
+
+  return (
+    <>
+      {dots.map((d, i) => (
+        <m.div
+          key={`hint-dot-${i}`}
+          className="pointer-events-none absolute"
+          style={{
+            left: d.x - 3,
+            top: d.y - 3,
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: theme.accent,
+            zIndex: 6,
+          }}
+          // Asymmetric timing — 300ms entrance with OVERSHOOT (per dot),
+          // 1800ms hold, 600ms exit with SMOOTH_OUT.
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{ opacity: [0, 0.55, 0.55, 0], scale: [0.4, 1, 1, 0.7] }}
+          transition={{
+            duration: 5,
+            times: [0, 0.12, 0.76, 1],
+            ease: i === 0 ? OVERSHOOT : SMOOTH_OUT,
+            delay: d.stagger,
+          }}
         />
       ))}
     </>

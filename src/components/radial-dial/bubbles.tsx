@@ -121,6 +121,17 @@ export function OptionBubble({
   const homedBorder = `${selectivityWeight + 0.5}px`;
   return (
     <m.div
+      // ARIA: even though this fan option isn't a button (the gesture
+      // engine commits via pointer math), it should still be announced
+      // as a menu item. aria-label includes selectivity + child count
+      // hints when present. Issue #11.
+      role="menuitem"
+      aria-label={
+        share !== undefined
+          ? `${label} — ${Math.round(share * 100)}% of options${childCount > 0 ? `, ${childCount} sub-options` : ''}`
+          : label
+      }
+      aria-current={homed ? 'true' : undefined}
       className="pointer-events-none absolute flex flex-col items-center justify-center"
       style={{
         left: pos.x - OPTION_DIAMETER / 2,
@@ -238,6 +249,13 @@ export function ActiveBubble({
   return (
     <m.div
       key={`active-${label}`}
+      // ARIA: this is the "you are here" node — aria-current="step" so screen
+      // readers announce it as the current step in the hierarchy. Not a button
+      // (pointer-events-none) so role stays implicit. Issue #11.
+      role="status"
+      aria-current="step"
+      aria-label={`Current: ${label}`}
+      aria-live="polite"
       className="pointer-events-none absolute flex items-center justify-center"
       style={{
         left: pos.x - ACTIVE_DIAMETER / 2,
@@ -310,6 +328,7 @@ export function SettledNode({
   isRoot,
   theme,
   onJumpBack,
+  reduceMotion = false,
 }: {
   pos: Vec;
   label: string;
@@ -317,17 +336,29 @@ export function SettledNode({
   theme: RadialDialTheme;
   /** When provided, settled node becomes a clickable "jump back to here" target. */
   onJumpBack?: () => void;
+  /** Honor prefers-reduced-motion — no idle pulse. */
+  reduceMotion?: boolean;
 }) {
   const isLight = theme.mode === 'light';
   const interactive = !!onJumpBack;
   // Root settled shows a quiet "·" — clicking would reset (handled by reset button).
   const showLabel = !isRoot;
+  // Stable random offset so adjacent settled nodes don't pulse in sync.
+  // Issue #10 — broadcasts "clickable" affordance at rest.
+  const pulsePhase = useMemo(() => Math.random() * 0.8, []);
   return (
     <m.button
       type="button"
       onClick={onJumpBack}
       disabled={!interactive}
-      aria-label={interactive ? `Jump back to ${label}` : undefined}
+      role="menuitem"
+      // aria-current="false" — these are PRIOR steps in the menu hierarchy,
+      // not the active step. The active step gets aria-current="step" on
+      // ActiveBubble. Issue #11.
+      aria-current={false}
+      aria-label={interactive ? `Jump back to ${label}` : label}
+      // Tooltip on hover, native UA timing. Issue #10.
+      title={interactive ? 'Click to jump back here' : undefined}
       className={`absolute flex items-center justify-center ${interactive ? '' : 'pointer-events-none'}`}
       style={{
         left: pos.x - SETTLED_DIAMETER / 2,
@@ -381,24 +412,48 @@ export function SettledNode({
         ].join(', ');
       }}
     >
-      <span
-        style={{
-          fontSize: showLabel ? 12 : 14,
-          color: mix(theme.ink, isLight ? 60 : 70),
-          fontFamily: theme.serif,
-          fontStyle: 'italic',
-          letterSpacing: '0.005em',
-          padding: '0 4px',
-          textAlign: 'center',
-          lineHeight: 1.1,
-          maxWidth: SETTLED_DIAMETER - 12,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
+      {/* Inner pulse — slow scale [1, 1.02, 1] over 2.4s broadcasts the
+          "click to change" affordance at rest. Paused when non-interactive
+          or under prefers-reduced-motion. Out-of-sync per-bubble via random
+          phase. Issue #10. */}
+      <m.div
+        className="flex items-center justify-center"
+        style={{ width: '100%', height: '100%' }}
+        animate={
+          interactive && !reduceMotion
+            ? { scale: [1, 1.02, 1] }
+            : { scale: 1 }
+        }
+        transition={
+          interactive && !reduceMotion
+            ? {
+                duration: 2.4,
+                repeat: Infinity,
+                ease: 'easeInOut',
+                delay: pulsePhase,
+              }
+            : { duration: 0.2 }
+        }
       >
-        {isRoot ? '·' : label.toLowerCase()}
-      </span>
+        <span
+          style={{
+            fontSize: showLabel ? 12 : 14,
+            color: mix(theme.ink, isLight ? 60 : 70),
+            fontFamily: theme.serif,
+            fontStyle: 'italic',
+            letterSpacing: '0.005em',
+            padding: '0 4px',
+            textAlign: 'center',
+            lineHeight: 1.1,
+            maxWidth: SETTLED_DIAMETER - 12,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {isRoot ? '·' : label.toLowerCase()}
+        </span>
+      </m.div>
     </m.button>
   );
 }
@@ -564,7 +619,8 @@ export function IdleGhost({
       // start a drag gesture. Click commits cleanly without engine involvement.
       onPointerDown={e => e.stopPropagation()}
       disabled={!interactive}
-      aria-label={interactive ? `Choose ${label}` : undefined}
+      role="menuitem"
+      aria-label={interactive ? `Choose ${label}` : label}
       className="absolute flex flex-col items-center justify-center"
       style={{
         left: pos.x - OPTION_DIAMETER / 2,

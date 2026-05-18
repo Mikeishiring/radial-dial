@@ -298,6 +298,100 @@ export function AnimatedNumber({
 }
 
 // =============================================================================
+// ApplyButton — the terminal CTA. Slides in below the path word when the
+// user has committed at least one level and `onApply` is provided. Reads
+// like an outlet for the gesture: the water has been gathered, now drain it.
+// EXPO_OUT entrance (300ms), SMOOTH_OUT exit (200ms) — asymmetric per
+// project guidelines. Issue #12.
+// =============================================================================
+export function ApplyButton({
+  theme,
+  label,
+  count,
+  formatCount,
+  onClick,
+}: {
+  theme: RadialDialTheme;
+  label: string;
+  /** Optional inline count, e.g. "Apply 47 matches". */
+  count?: number | null;
+  formatCount?: (n: number) => string;
+  onClick: () => void;
+}) {
+  const countStr =
+    count !== null && count !== undefined && formatCount
+      ? ` ${formatCount(count)}`
+      : '';
+  return (
+    <m.div
+      className="absolute left-1/2 z-20 -translate-x-1/2"
+      // Positioned just under PathLine (top: 56) — give it air to breathe.
+      style={{ top: 96 }}
+      initial={{ opacity: 0, y: -8, scale: 0.92 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -4, scale: 0.96 }}
+      transition={{
+        opacity: { duration: 0.3, ease: EXPO_OUT },
+        y: { duration: 0.3, ease: EXPO_OUT },
+        scale: { duration: 0.3, ease: EXPO_OUT },
+        exit: { duration: 0.2, ease: SMOOTH_OUT },
+      }}
+    >
+      <m.button
+        type="button"
+        onClick={onClick}
+        aria-label={`${label}${countStr}`}
+        className="focus-visible:outline-none"
+        style={{
+          padding: '8px 20px',
+          fontSize: 12,
+          letterSpacing: '0.08em',
+          fontWeight: 500,
+          fontFamily: theme.mono,
+          color: theme.paper,
+          background: theme.accent,
+          border: `1.5px solid ${mix(theme.accent, 90)}`,
+          borderRadius: 999,
+          cursor: 'pointer',
+          boxShadow: `0 6px 18px ${mix(theme.accent, 22)}, 0 0 28px ${mix(theme.accent, 16)}`,
+          transitionProperty: 'background, transform, box-shadow',
+          transitionDuration: '180ms',
+          transitionTimingFunction: `cubic-bezier(${SMOOTH_OUT.join(',')})`,
+        }}
+        whileHover={{ scale: 1.04, y: -1 }}
+        whileTap={{ scale: 0.94 }}
+        onMouseEnter={e => {
+          e.currentTarget.style.boxShadow = `0 8px 22px ${mix(theme.accent, 30)}, 0 0 40px ${mix(theme.accent, 24)}`;
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.boxShadow = `0 6px 18px ${mix(theme.accent, 22)}, 0 0 28px ${mix(theme.accent, 16)}`;
+        }}
+        onFocus={e => {
+          e.currentTarget.style.boxShadow = `0 0 0 3px ${mix(theme.accent, 28)}, 0 8px 22px ${mix(theme.accent, 30)}`;
+        }}
+        onBlur={e => {
+          e.currentTarget.style.boxShadow = `0 6px 18px ${mix(theme.accent, 22)}, 0 0 28px ${mix(theme.accent, 16)}`;
+        }}
+      >
+        <span style={{ textTransform: 'uppercase' }}>{label}</span>
+        {countStr && (
+          <span
+            style={{
+              marginLeft: 8,
+              fontFeatureSettings: '"tnum" 1',
+              fontVariantNumeric: 'tabular-nums',
+              opacity: 0.92,
+            }}
+          >
+            {countStr.trim()}
+          </span>
+        )}
+      </m.button>
+    </m.div>
+  );
+}
+
+// =============================================================================
 // ResetButton — small accent-bordered pill, top-right of the dial.
 // "Perks up" 1px on hover acknowledging intent before the click commits.
 // =============================================================================

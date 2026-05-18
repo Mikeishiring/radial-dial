@@ -9,11 +9,12 @@ import {
   AmbientRipple,
   CommitParticles,
   CommitWave,
+  FirstRunHint,
   IdleMotes,
   PaperWarp,
   SettleRipples,
 } from './atmosphere';
-import { PathLine, ResetButton } from './chrome';
+import { ApplyButton, PathLine, ResetButton } from './chrome';
 import {
   ACTIVE_TRIM_RADIUS,
   COMMIT_DISTANCE,
@@ -122,6 +123,14 @@ export type RadialDialProps = {
   onChange?: (payload: DialPathPayload) => void;
   /** Fired on release if any commits exist. */
   onComplete?: (payload: DialPathPayload) => void;
+  /**
+   * Fired when the user explicitly applies the selection (Apply CTA click
+   * or Enter key while in 'committed' phase). When provided, an Apply
+   * pill slides in below the path on terminal commits. Issue #12.
+   */
+  onApply?: (payload: DialPathPayload) => void;
+  /** Text on the Apply CTA. Default: "Apply" + count suffix. */
+  applyLabel?: string;
 };
 
 export function RadialDial({
@@ -135,6 +144,8 @@ export function RadialDial({
   toolbar,
   onChange,
   onComplete,
+  onApply,
+  applyLabel = 'Apply',
 }: RadialDialProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -260,9 +271,35 @@ export function RadialDial({
     },
     [dial],
   );
-
-  // Live count for the counter readout.
+  // Live count for the counter readout — declared here (early) because
+  // applyCurrent depends on it. Also consumed by PathLine / Apply CTA below.
   const count = total !== undefined ? dial.computeCount(total) : null;
+  // Apply current selection — fired by the Apply pill or Enter key when
+  // phase === 'committed'. Constructs a fresh payload from the path so
+  // consumers don't need to track committed state separately. Issue #12.
+  const applyCurrent = useCallback(() => {
+    if (!onApply || dial.path.length <= 1) return;
+    const nodes = dial.path.slice(1).map(p => p.node);
+    onApply({ nodes, count: count ?? undefined });
+  }, [onApply, dial.path, count]);
+  // Keyboard handler — Escape pops one level (back-out navigation), matching
+  // standard menu-widget conventions. Enter applies when committed.
+  // ArrowKey cycling is a separate issue (#26) handled at the option-fan
+  // level. Issues #11, #12.
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape' && dial.path.length > 1) {
+        e.preventDefault();
+        dial.popToLevel(dial.path.length - 2);
+        return;
+      }
+      if (e.key === 'Enter' && dial.phase === 'committed' && onApply) {
+        e.preventDefault();
+        applyCurrent();
+      }
+    },
+    [dial, onApply, applyCurrent],
+  );
 
   // Idle-hover proximity: 1.0 when cursor is on the root, 0 at 200px+ away.
   // Drives the sneak-peek ghost fan + the idle hint fade.
@@ -515,14 +552,40 @@ export function RadialDial({
         tabReturnTick={tabReturnTick}
       />
 
+      {/* Apply CTA — only when committed AND consumer wired up onApply.
+          Slides in beneath the PathLine; click or Enter fires the payload.
+          Issue #12. */}
+      <AnimatePresence>
+        {onApply && dial.phase === 'committed' && dial.path.length > 1 && (
+          <ApplyButton
+            theme={theme}
+            label={applyLabel}
+            count={count}
+            formatCount={formatCount}
+            onClick={applyCurrent}
+          />
+        )}
+      </AnimatePresence>
+
       <div
         ref={stageRef}
-        className="absolute inset-0 touch-none"
+        className="absolute inset-0 touch-none focus:outline-none"
+        // ARIA: dial is a hierarchical menu. role="menu" makes children
+        // role-aware to screen readers; aria-expanded reflects whether the
+        // fan is open (drawing) or at rest. aria-label gives the menu's
+        // overall name so screen readers can announce context on focus.
+        // Issue #11.
+        role="menu"
+        aria-label={title ?? `${tree.label} selector`}
+        aria-expanded={dial.phase === 'drawing' || dial.path.length > 1}
+        aria-orientation="horizontal"
+        tabIndex={0}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onPointerLeave={onPointerLeave}
+        onKeyDown={onKeyDown}
       >
         {/* Paper warp — pressure indent under the active node. Sits below ink. */}
         {dial.activeEntry && (
@@ -595,6 +658,21 @@ export function RadialDial({
           <AmbientRipple pos={idleAnchor} theme={theme} />
         )}
 
+        {/* First-run hint — one-shot dotted arc from root toward the first
+            child, after 3s idle. Persisted via localStorage. Issue #9. */}
+        {dial.phase === 'idle' && stageSize.w > 0 && tree.children?.[0] && (
+          <FirstRunHint
+            rootPos={idleAnchor}
+            targetPos={{
+              // Hint points toward the 12-o'clock option (first child).
+              x: idleAnchor.x,
+              y: idleAnchor.y - fanRadius * 0.7,
+            }}
+            theme={theme}
+            reduceMotion={reduceMotion}
+          />
+        )}
+
         {/* Idle motes — small ink flecks drift across the paper, like dust.
             Cursor position biases drift 30% toward the user's attention. */}
         {dial.phase === 'idle' && !reduceMotion && stageSize.w > 0 && (
@@ -651,6 +729,7 @@ export function RadialDial({
                 ? () => dial.popToLevel(i - 1)
                 : undefined
             }
+            reduceMotion={reduceMotion}
           />
         ))}
 
