@@ -1,0 +1,298 @@
+import { useState } from 'react';
+import {
+  RadialDial,
+  PAPER_THEME,
+  ALL_THEMES,
+  mix,
+} from '@mikeishiring/radial-dial';
+import type {
+  DialNode,
+  RadialDialTheme,
+} from '@mikeishiring/radial-dial';
+
+// =============================================================================
+// Demo page — consumes the RadialDial template.
+// The page itself stays thin: it owns the tree data, picks a theme, and
+// hands everything to <RadialDial />.
+// =============================================================================
+
+const TREE: DialNode = {
+  id: 'root',
+  label: 'Find',
+  children: [
+    {
+      id: 'role',
+      label: 'Role',
+      icon: <RoleIcon />,
+      share: 1,
+      children: [
+        {
+          id: 'engineering',
+          label: 'Engineering',
+          share: 0.46,
+          children: [
+            { id: 'frontend', label: 'Frontend', share: 0.32 },
+            { id: 'backend', label: 'Backend', share: 0.34 },
+            { id: 'smart-contract', label: 'Smart contract', share: 0.20 },
+            { id: 'full-stack', label: 'Full-stack', share: 0.14 },
+          ],
+        },
+        {
+          id: 'design',
+          label: 'Design',
+          share: 0.12,
+          children: [
+            { id: 'product-designer', label: 'Product' },
+            { id: 'brand', label: 'Brand' },
+          ],
+        },
+        {
+          id: 'product',
+          label: 'Product',
+          share: 0.18,
+          children: [
+            { id: 'pm', label: 'PM' },
+            { id: 'growth', label: 'Growth' },
+          ],
+        },
+        {
+          id: 'ops',
+          label: 'Ops',
+          share: 0.24,
+          children: [
+            { id: 'recruiting', label: 'Recruiting' },
+            { id: 'finance', label: 'Finance' },
+            { id: 'people', label: 'People' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'seniority',
+      label: 'Seniority',
+      icon: <SeniorityIcon />,
+      share: 1,
+      children: [
+        { id: 'junior', label: 'Junior', share: 0.18 },
+        { id: 'mid', label: 'Mid', share: 0.34 },
+        { id: 'senior', label: 'Senior', share: 0.30 },
+        { id: 'staff', label: 'Staff+', share: 0.18 },
+      ],
+    },
+    {
+      id: 'salary',
+      label: 'Salary',
+      icon: <SalaryIcon />,
+      share: 1,
+      children: [
+        { id: 'sub-100', label: '< $100k', share: 0.14 },
+        { id: '100-150', label: '$100–150k', share: 0.32 },
+        { id: '150-200', label: '$150–200k', share: 0.30 },
+        { id: '200-plus', label: '$200k+', share: 0.24 },
+      ],
+    },
+    {
+      id: 'stage',
+      label: 'Stage',
+      icon: <StageIcon />,
+      share: 1,
+      children: [
+        { id: 'seed', label: 'Seed', share: 0.30 },
+        { id: 'series-a', label: 'Series A', share: 0.28 },
+        { id: 'series-b-plus', label: 'Series B+', share: 0.26 },
+        { id: 'public', label: 'Public', share: 0.16 },
+      ],
+    },
+  ],
+};
+
+export function RadialDialPage() {
+  const [theme, setTheme] = useState<RadialDialTheme>(PAPER_THEME);
+
+  return (
+    <div className="h-[calc(100vh-64px)] w-full">
+      <RadialDial
+        tree={TREE}
+        theme={theme}
+        title="radial · template"
+        hint=""
+        countLabel="jobs"
+        total={28_400}
+        onComplete={({ nodes }: { nodes: DialNode[] }) => {
+          // Consumer hooks here — e.g. navigate, fire analytics, build a query.
+          if (typeof window !== 'undefined') {
+            // eslint-disable-next-line no-console
+            console.info('[RadialDial] complete:', nodes.map((n: DialNode) => n.label).join(' › '));
+          }
+        }}
+        toolbar={<ThemeSwitcher theme={theme} onChange={setTheme} />}
+      />
+    </div>
+  );
+}
+
+// =============================================================================
+// Theme switcher — small pill row, slides indicator under active theme.
+// =============================================================================
+function ThemeSwitcher({
+  theme,
+  onChange,
+}: {
+  theme: RadialDialTheme;
+  onChange: (t: RadialDialTheme) => void;
+}) {
+  return (
+    <div
+      className="flex items-center"
+      style={{
+        padding: 3,
+        gap: 0,
+        background: mix(theme.ink, theme.mode === 'light' ? 4 : 8, theme.paper),
+        border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 10 : 18)}`,
+        borderRadius: 999,
+        fontFamily: theme.mono,
+        fontSize: 9,
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+      }}
+    >
+      {ALL_THEMES.map((t: RadialDialTheme) => {
+        const active = t.name === theme.name;
+        return (
+          <button
+            key={t.name}
+            type="button"
+            onClick={() => onChange(t)}
+            aria-label={`Switch to ${t.name} theme`}
+            style={{
+              padding: '4px 10px',
+              borderRadius: 999,
+              background: active ? mix(theme.accent, 16) : 'transparent',
+              color: active ? theme.accent : mix(theme.ink, 55),
+              border: 'none',
+              cursor: 'pointer',
+              transitionProperty: 'background, color',
+              transitionDuration: '200ms',
+              transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
+            }}
+          >
+            {t.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// =============================================================================
+// Hand-inked category icons.
+// Each: 28×28 rendered, 1.6px stroke, ROUND caps and joins so the line ends
+// look like brush strokes rather than guillotined edges. Slight asymmetry
+// is deliberate — these should feel drawn, not generated.
+//
+//  Role       → a chair from the side. "Where the role sits."
+//  Seniority  → ascending steps. Walking up the ranks.
+//  Salary     → calligraphic $ with extended stem. Editorial flourish.
+//  Stage      → a small spire. The company building, growing tall.
+// =============================================================================
+const ICON_SIZE = 28;
+const ICON_STROKE = 1.6;
+
+function RoleIcon() {
+  return (
+    <svg
+      width={ICON_SIZE}
+      height={ICON_SIZE}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={ICON_STROKE}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      // Tailwind preflight + flex column shrink the SVG below its width attr;
+      // explicit style + flex-shrink-0 forces the icon to render at full size.
+      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
+    >
+      {/* chair back */}
+      <path d="M7.5 5 L 7.2 14" />
+      {/* seat */}
+      <path d="M5.5 14 L 17.8 14" />
+      {/* rear leg */}
+      <path d="M7.5 14 L 7 21" />
+      {/* front leg */}
+      <path d="M16 14 L 17 21" />
+    </svg>
+  );
+}
+
+function SeniorityIcon() {
+  return (
+    <svg
+      width={ICON_SIZE}
+      height={ICON_SIZE}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={ICON_STROKE}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      // Tailwind preflight + flex column shrink the SVG below its width attr;
+      // explicit style + flex-shrink-0 forces the icon to render at full size.
+      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
+    >
+      {/* three ascending steps */}
+      <path d="M3.5 19.5 L 8 19.5 L 8 14.5 L 13 14.5 L 13 9.5 L 18 9.5 L 18 4.5 L 21 4.5" />
+    </svg>
+  );
+}
+
+function SalaryIcon() {
+  return (
+    <svg
+      width={ICON_SIZE}
+      height={ICON_SIZE}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={ICON_STROKE}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      // Tailwind preflight + flex column shrink the SVG below its width attr;
+      // explicit style + flex-shrink-0 forces the icon to render at full size.
+      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
+    >
+      {/* extended stem — the calligraphic flourish */}
+      <path d="M12 3 L 12 21" />
+      {/* the S-curve, hand-drawn with quadratic bezier flow */}
+      <path d="M16.5 7 Q 12 5 8.5 7 Q 5.2 9 8.4 11.4 Q 11.5 13.4 15 14.6 Q 18 16 15 19 Q 12 20.8 7.8 18.8" />
+    </svg>
+  );
+}
+
+function StageIcon() {
+  return (
+    <svg
+      width={ICON_SIZE}
+      height={ICON_SIZE}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={ICON_STROKE}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      // Tailwind preflight + flex column shrink the SVG below its width attr;
+      // explicit style + flex-shrink-0 forces the icon to render at full size.
+      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
+    >
+      {/* sides + base of tower */}
+      <path d="M8 21 L 8 9.5" />
+      <path d="M16 21 L 16 9.5" />
+      <path d="M7 21 L 17 21" />
+      {/* triangular roof */}
+      <path d="M6.5 9.5 L 12 4 L 17.5 9.5" />
+      {/* small window dot */}
+      <circle cx="12" cy="14.5" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+

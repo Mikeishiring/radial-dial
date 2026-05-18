@@ -1,0 +1,71 @@
+{
+  "name": "@mikeishiring/radial-dial",
+  "version": "0.1.0",
+  "description": "A hierarchical marking-menu dial for React. Press, draw a line, release.",
+  "type": "module",
+  "main": "./dist/radial-dial.cjs",
+  "module": "./dist/radial-dial.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/radial-dial.js",
+      "require": "./dist/radial-dial.cjs"
+    },
+    "./themes": {
+      "types": "./dist/themes.d.ts",
+      "import": "./dist/themes.js"
+    },
+    "./styles.css": "./dist/radial-dial.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:types": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "example": "vite --config example/vite.config.ts",
+    "lint": "echo \"(no linter configured yet)\""
+  },
+  "peerDependencies": {
+    "framer-motion": ">=10.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "framer-motion": "^10.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vite-plugin-dts": "^3.7.0"
+  },
+  "keywords": [
+    "react",
+    "radial-menu",
+    "marking-menu",
+    "pie-menu",
+    "gesture",
+    "hierarchical",
+    "framer-motion",
+    "ui",
+    "component"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mikeishiring/radial-dial.git"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
