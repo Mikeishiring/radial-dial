@@ -5,6 +5,7 @@ import {
   PAPER_THEME,
   ALL_THEMES,
   mix,
+  glassSurface,
   EXPO_OUT,
   SMOOTH_OUT,
 } from '@mikeishiring/radial-dial';
@@ -118,10 +119,20 @@ const TREE: DialNode = {
   ],
 };
 
+const TOTAL_JOBS = 28_400;
+
+// Compute the running count by multiplying each node's share down the path.
+function countForPath(nodes: DialNode[]): number {
+  return nodes.reduce((n, node) => n * (node.share ?? 1), TOTAL_JOBS);
+}
+
 export function RadialDialPage() {
   const [theme, setTheme] = useState<RadialDialTheme>(PAPER_THEME);
   // The last-applied payload — shown in a toast that auto-dismisses.
   const [lastApplied, setLastApplied] = useState<DialPathPayload | null>(null);
+  // When the user drills all the way to a leaf (a node with no children),
+  // we open a styled results preview. Null when not at a leaf.
+  const [leafPath, setLeafPath] = useState<DialNode[] | null>(null);
 
   return (
     <div
@@ -139,10 +150,16 @@ export function RadialDialPage() {
         title="radial · dial"
         hint="press, draw a line, release."
         countLabel="jobs"
-        total={28_400}
-        onComplete={({ nodes }) => {
-          // Fired automatically on release with any committed path. The Apply
-          // CTA is a separate explicit confirmation step (below).
+        total={TOTAL_JOBS}
+        onChange={({ nodes }: DialPathPayload) => {
+          // Fired on every commit / undo as you drill through levels. When
+          // the deepest node is a LEAF (no children), you've reached the end
+          // — open the styled preview. Otherwise keep it closed.
+          const last = nodes[nodes.length - 1];
+          const reachedLeaf = !!last && !last.children?.length;
+          setLeafPath(reachedLeaf ? nodes : null);
+        }}
+        onComplete={({ nodes }: DialPathPayload) => {
           if (typeof window !== 'undefined') {
             // eslint-disable-next-line no-console
             console.info(
@@ -166,6 +183,20 @@ export function RadialDialPage() {
           out of the way. The dial's own title sits top-left so this gives
           the user something to read while figuring out the gesture. */}
       <IntroCard theme={theme} />
+
+      {/* Styled results preview — slides in from the right when you drill all
+          the way to a leaf. This is "the page opening up" at the end of the
+          gesture. Dismiss with the × or by undoing back up a level. */}
+      <AnimatePresence>
+        {leafPath && (
+          <PreviewPanel
+            key="preview"
+            path={leafPath}
+            theme={theme}
+            onClose={() => setLeafPath(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Last-applied toast — slides up from the bottom centre. */}
       <AnimatePresence>
@@ -297,6 +328,265 @@ function AppliedToast({
 }
 
 // =============================================================================
+// PreviewPanel — "the page opening up" at the end of the gesture.
+//
+// Slides in from the right when the user drills to a leaf. Shows the composed
+// query as an editorial headline, the running match count, and a few mock
+// result cards styled to feel like a real results page. Dim backdrop behind;
+// click it (or the ×) to dismiss. EXPO_OUT entrance / SMOOTH_OUT exit per the
+// asymmetric-timing rule.
+// =============================================================================
+function PreviewPanel({
+  path,
+  theme,
+  onClose,
+}: {
+  path: DialNode[];
+  theme: RadialDialTheme;
+  onClose: () => void;
+}) {
+  const isLight = theme.mode === 'light';
+  const count = Math.round(countForPath(path));
+  const results = mockResults(path);
+  const queryStr = path.map(n => n.label).join(' · ');
+  // Heavy frosted glass for the panel — the dial blurs through it (iOS style).
+  const panelGlass = glassSurface(theme, { alpha: isLight ? 62 : 46, blur: 28 });
+  const cardGlass = glassSurface(theme, { alpha: isLight ? 46 : 26, blur: 8 });
+
+  return (
+    <>
+      {/* Backdrop — light dim + blur, click to dismiss. Lets the dial stay
+          faintly visible behind the glass rather than going opaque. */}
+      <motion.div
+        onClick={onClose}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 40,
+          background: mix(theme.ink, isLight ? 6 : 18, 'transparent'),
+          backdropFilter: 'blur(3px) saturate(140%)',
+          WebkitBackdropFilter: 'blur(3px) saturate(140%)',
+        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3, ease: SMOOTH_OUT }}
+      />
+      {/* Panel — frosted glass pane sliding in from the right edge. */}
+      <motion.aside
+        role="dialog"
+        aria-label="Results preview"
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 41,
+          width: 'min(420px, 92vw)',
+          background: panelGlass.background,
+          backdropFilter: panelGlass.backdropFilter,
+          WebkitBackdropFilter: panelGlass.WebkitBackdropFilter,
+          borderLeft: `1px solid ${isLight ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.12)'}`,
+          boxShadow: `-24px 0 60px ${mix(theme.ink, isLight ? 12 : 44)}, inset 1px 0 0 rgba(255,255,255,${isLight ? 0.5 : 0.08})`,
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '28px 28px 20px',
+          overflowY: 'auto',
+        }}
+        initial={{ x: '101%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '101%' }}
+        transition={{
+          // Asymmetric: slower expo-out entrance, snappier smooth-out exit.
+          x: { type: 'tween', duration: 0.42, ease: EXPO_OUT },
+        }}
+      >
+        {/* Header row — label + close */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 18,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              letterSpacing: '0.22em',
+              textTransform: 'uppercase',
+              fontFamily: theme.mono,
+              color: mix(theme.ink, isLight ? 45 : 60),
+            }}
+          >
+            Preview
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close preview"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              border: 'none',
+              background: mix(theme.ink, isLight ? 6 : 14, 'transparent'),
+              color: mix(theme.ink, isLight ? 60 : 70),
+              cursor: 'pointer',
+              fontSize: 15,
+              lineHeight: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'background 180ms cubic-bezier(0.22,1,0.36,1)',
+            }}
+            onMouseEnter={e =>
+              (e.currentTarget.style.background = mix(theme.accent, 14, 'transparent'))
+            }
+            onMouseLeave={e =>
+              (e.currentTarget.style.background = mix(theme.ink, isLight ? 6 : 14, 'transparent'))
+            }
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Query headline */}
+        <div
+          style={{
+            fontFamily: theme.serif,
+            fontStyle: 'italic',
+            fontSize: 22,
+            lineHeight: 1.25,
+            color: theme.ink,
+            marginBottom: 6,
+            letterSpacing: '-0.01em',
+          }}
+        >
+          {queryStr}
+        </div>
+
+        {/* Count line */}
+        <div
+          style={{
+            fontFamily: theme.mono,
+            fontSize: 13,
+            color: mix(theme.accent, 85, isLight ? '#000' : '#fff'),
+            fontFeatureSettings: '"tnum" 1',
+            marginBottom: 22,
+          }}
+        >
+          {count.toLocaleString('en-US')} matching roles
+        </div>
+
+        {/* Result cards */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {results.map((r, i) => (
+            <motion.div
+              key={r.company + r.title}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                delay: 0.18 + i * 0.06,
+                duration: 0.34,
+                ease: EXPO_OUT,
+              }}
+              style={{
+                padding: '14px 16px',
+                borderRadius: 14,
+                background: cardGlass.background,
+                backdropFilter: cardGlass.backdropFilter,
+                WebkitBackdropFilter: cardGlass.WebkitBackdropFilter,
+                border: cardGlass.border,
+                boxShadow: cardGlass.glassShadow,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  marginBottom: 4,
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontWeight: 550,
+                    fontSize: 14,
+                    color: theme.ink,
+                  }}
+                >
+                  {r.title}
+                </span>
+                <span
+                  style={{
+                    fontFamily: theme.mono,
+                    fontSize: 11,
+                    color: mix(theme.accent, 80, isLight ? '#000' : '#fff'),
+                    fontFeatureSettings: '"tnum" 1',
+                  }}
+                >
+                  {r.salary}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontFamily: theme.serif,
+                  fontStyle: 'italic',
+                  fontSize: 13,
+                  color: mix(theme.ink, isLight ? 55 : 65),
+                }}
+              >
+                {r.company} · {r.location}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Footer hint */}
+        <div
+          style={{
+            marginTop: 'auto',
+            paddingTop: 18,
+            fontFamily: theme.mono,
+            fontSize: 10,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: mix(theme.ink, isLight ? 40 : 50),
+          }}
+        >
+          Escape or × to refine
+        </div>
+      </motion.aside>
+    </>
+  );
+}
+
+// Generate plausible mock result rows from the committed path. Purely
+// illustrative — a real consumer would query their own data here.
+function mockResults(path: DialNode[]): Array<{
+  title: string;
+  company: string;
+  location: string;
+  salary: string;
+}> {
+  const leaf = path[path.length - 1]?.label ?? 'Role';
+  const companies = ['Uniswap Labs', 'Phantom', 'Farcaster', 'Base', 'Helius'];
+  const locations = ['Remote', 'New York', 'Remote · EU', 'San Francisco'];
+  const salaries = ['$160k', '$185k', '$210k', '$140k', '$175k'];
+  const titlePrefix = leaf.includes('$') || /Seed|Series|Public/.test(leaf)
+    ? 'Engineer'
+    : leaf;
+  return Array.from({ length: 4 }, (_, i) => ({
+    title: `${titlePrefix} ${['', 'II', 'Senior', 'Lead'][i] ?? ''}`.trim(),
+    company: companies[i % companies.length],
+    location: locations[i % locations.length],
+    salary: salaries[i % salaries.length],
+  }));
+}
+
+// =============================================================================
 // FooterLink — tiny mono-spaced link to the repo. Bottom-right.
 // =============================================================================
 function FooterLink({ theme }: { theme: RadialDialTheme }) {
@@ -332,6 +622,10 @@ function FooterLink({ theme }: { theme: RadialDialTheme }) {
 // =============================================================================
 // Theme switcher — small pill row, slides indicator under active theme.
 // =============================================================================
+// Segmented pill (Pill Consolidation #2): ONE container with a sliding
+// indicator, not three sibling pills. The active indicator is a shared-layout
+// motion.div — Framer FLIP-animates it between segments, so switching themes
+// slides the accent capsule across rather than hard-swapping backgrounds.
 function ThemeSwitcher({
   theme,
   onChange,
@@ -341,11 +635,14 @@ function ThemeSwitcher({
 }) {
   return (
     <div
+      role="radiogroup"
+      aria-label="Theme"
       style={{
-        display: 'flex',
+        display: 'inline-flex',
         alignItems: 'center',
+        position: 'relative',
         padding: 3,
-        gap: 0,
+        gap: 2,
         background: mix(theme.ink, theme.mode === 'light' ? 4 : 8, theme.paper),
         border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 10 : 18)}`,
         borderRadius: 999,
@@ -361,21 +658,37 @@ function ThemeSwitcher({
           <button
             key={t.name}
             type="button"
+            role="radio"
+            aria-checked={active}
             onClick={() => onChange(t)}
             aria-label={`Switch to ${t.name} theme`}
             style={{
+              position: 'relative',
               padding: '4px 10px',
               borderRadius: 999,
-              background: active ? mix(theme.accent, 16) : 'transparent',
-              color: active ? theme.accent : mix(theme.ink, 55),
+              background: 'transparent',
+              color: active ? theme.accent : mix(theme.ink, 58),
               border: 'none',
               cursor: 'pointer',
-              transitionProperty: 'background, color',
-              transitionDuration: '200ms',
-              transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
+              transition: 'color 220ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
           >
-            {t.name}
+            {/* Sliding indicator — shared layoutId means Framer animates it
+                from the previously-active segment to this one. */}
+            {active && (
+              <motion.span
+                layoutId="theme-indicator"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  borderRadius: 999,
+                  background: mix(theme.accent, 16),
+                  boxShadow: `inset 0 0 0 1px ${mix(theme.accent, 28)}`,
+                }}
+                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+              />
+            )}
+            <span style={{ position: 'relative', zIndex: 1 }}>{t.name}</span>
           </button>
         );
       })}

@@ -4,19 +4,18 @@ import { strokeConfidence } from './ink';
 import {
   ACTIVE_DIAMETER,
   BLOOM_STAGGER_MS,
+  EXPO_OUT,
   OPTION_DIAMETER,
   OVERSHOOT,
-  SETTLED_DIAMETER,
   SMOOTH_OUT,
 } from './geometry';
-import { mix, mixTwo } from './themes';
+import { glassSurface, mix, mixTwo } from './themes';
 import type { InkPoint, RadialDialTheme, Vec } from './types';
 
 /**
  * Bubbles — every round bubble visible in the dial.
  *
  *   IdleRoot       → wax-seal-style root at rest, breathes + greets first visit
- *   SettledNode    → small clickable trail markers (jump-back navigation)
  *   ActiveBubble   → current "you are here" with approach-strength morphing
  *   OptionBubble   → fan options during drawing, with magnetic pull + dots
  *   IdleGhost      → always-visible clickable option (idle + committed phases)
@@ -119,6 +118,11 @@ export function OptionBubble({
     share === undefined || share >= 0.4 ? 1 : share >= 0.2 ? 1.4 : 1.8;
   const idleBorder = `${selectivityWeight}px`;
   const homedBorder = `${selectivityWeight + 0.5}px`;
+  // Frosted glass — the fan options float over the ink + planets like panes.
+  // Higher fill alpha + a legible ink ring (below) so options read clearly;
+  // the earlier translucent glass left them near-invisible on light themes.
+  const glass = glassSurface(theme, { alpha: isLight ? 64 : 42, blur: 10 });
+  const homedFill = `color-mix(in srgb, ${theme.paper} ${isLight ? 72 : 56}%, transparent)`;
   return (
     <m.div
       // ARIA: even though this fan option isn't a button (the gesture
@@ -139,20 +143,21 @@ export function OptionBubble({
         width: OPTION_DIAMETER,
         height: OPTION_DIAMETER,
         borderRadius: '50%',
-        background: homed
-          ? mixTwo(theme.paper, 92 - homedStrength * 8, theme.accent, homedStrength * 10)
-          : mix(theme.paper, isLight ? 88 : 80, theme.paper),
+        // Frosted glass base; homed options brighten + gain an accent rim/glow.
+        background: homed ? homedFill : glass.background,
+        backdropFilter: glass.backdropFilter,
+        WebkitBackdropFilter: glass.WebkitBackdropFilter,
+        border: glass.border,
         boxShadow: homed
           ? [
+              glass.glassShadow,
               `inset 0 0 0 ${homedBorder} ${mix(theme.accent, 45 + homedStrength * 50)}`,
-              `0 2px 0 ${mix(theme.ink, 4)}`,
               `0 6px 18px ${mix(theme.accent, 6 + homedStrength * 22)}`,
               `0 0 ${20 + homedStrength * 20}px ${mix(theme.accent, homedStrength * 16)}`,
             ].join(', ')
           : [
-              `inset 0 0 0 ${idleBorder} ${mix(theme.ink, isLight ? 14 : 22)}`,
-              `0 1px 0 ${mix(theme.ink, isLight ? 3 : 0)}`,
-              `0 4px 14px ${mix(theme.ink, isLight ? 7 : 26)}`,
+              glass.glassShadow,
+              `inset 0 0 0 ${idleBorder} ${mix(theme.ink, isLight ? 24 : 32)}`,
             ].join(', '),
         color: homed ? mixTwo(theme.accent, 65 + homedStrength * 35, theme.ink, 10) : mix(theme.ink, 80),
         zIndex: 4,
@@ -233,6 +238,7 @@ export function ActiveBubble({
   theme,
   justPressed,
   approachStrength = 0,
+  reduceMotion = false,
 }: {
   pos: Vec;
   label: string;
@@ -241,11 +247,16 @@ export function ActiveBubble({
   justPressed: boolean;
   /** 0–1: how much the user is committing toward an option. */
   approachStrength?: number;
+  /** Honor prefers-reduced-motion — skips the one-shot refraction sweep. */
+  reduceMotion?: boolean;
 }) {
   const isLight = theme.mode === 'light';
   // As approach strength rises (0 → 1), the active bubble's accent presence
   // intensifies: deeper inset border, stronger glow, slight tint blend.
   const morphedBorder = `${1 + approachStrength * 0.6}px`;
+  // The anchor is glass too — a touch denser (higher fill alpha) than the
+  // floating options so it reads as the solid core the system hangs from.
+  const glass = glassSurface(theme, { alpha: isLight ? 58 : 40, blur: 11 });
   return (
     <m.div
       key={`active-${label}`}
@@ -263,23 +274,25 @@ export function ActiveBubble({
         width: ACTIVE_DIAMETER,
         height: ACTIVE_DIAMETER,
         borderRadius: '50%',
-        background: mixTwo(
-          theme.paper,
-          isLight ? 65 - approachStrength * 8 : 85 - approachStrength * 8,
-          theme.ink,
-          isLight ? 6 + approachStrength * 4 : 8 + approachStrength * 4,
-        ),
+        background: glass.background,
+        backdropFilter: glass.backdropFilter,
+        WebkitBackdropFilter: glass.WebkitBackdropFilter,
+        border: glass.border,
         boxShadow: [
-          `inset 0 0 0 ${morphedBorder} ${mix(theme.ink, isLight ? 88 : 55)}`,
-          justPressed
-            ? `inset 0 2px 4px ${mix(theme.ink, isLight ? 10 : 18)}`
-            : `inset 0 1px 2px ${mix(theme.ink, isLight ? 4 : 8)}`,
-          `0 1px 0 ${mix(theme.ink, isLight ? 5 : 0)}`,
+          glass.glassShadow,
+          // Accent rim — near-invisible at rest, sharpening as you commit toward
+          // an option (approachStrength → 1).
+          approachStrength > 0.01
+            ? `inset 0 0 0 ${morphedBorder} ${mix(theme.accent, 28 + approachStrength * 52)}`
+            : `inset 0 0 0 1px ${mix(theme.ink, isLight ? 12 : 18)}`,
+          justPressed ? `inset 0 2px 5px ${mix(theme.ink, isLight ? 12 : 22)}` : '',
           `0 8px 20px ${mix(theme.ink, isLight ? 12 : 30)}`,
-          `0 0 ${32 + approachStrength * 24}px ${mix(theme.accent, 16 + approachStrength * 22)}`,
-        ].join(', '),
+          `0 0 ${28 + approachStrength * 26}px ${mix(theme.accent, 10 + approachStrength * 28)}`,
+        ]
+          .filter(Boolean)
+          .join(', '),
         zIndex: 5,
-        transition: `box-shadow 220ms cubic-bezier(${SMOOTH_OUT.join(',')}), background 220ms cubic-bezier(${SMOOTH_OUT.join(',')})`,
+        transition: `box-shadow 220ms cubic-bezier(${SMOOTH_OUT.join(',')})`,
       }}
       // Two distinct entry feels:
       //  - Root active: WAX-SEAL STAMP on first press (rotated + undersized).
@@ -296,6 +309,38 @@ export function ActiveBubble({
           : { type: 'spring', stiffness: 200, damping: 24, mass: 0.85 }
       }
     >
+      {/* Refraction sweep — a one-shot light band travels across the glass when
+          this bubble mounts (i.e. on each commit, since the key includes the
+          label). Reads as light bending THROUGH the pane. Clipped to the circle
+          via overflow:hidden; the outer glow is unaffected (box-shadow ignores
+          overflow). Transform-only, GPU-cheap. Skipped under reduced motion. */}
+      {!reduceMotion && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          <m.div
+            style={{
+              position: 'absolute',
+              top: '-25%',
+              bottom: '-25%',
+              width: '45%',
+              background: `linear-gradient(90deg, transparent, ${mix(theme.accent, isLight ? 55 : 70)}, transparent)`,
+              transform: 'skewX(-18deg)',
+              mixBlendMode: 'screen',
+            }}
+            initial={{ left: '-60%', opacity: 0 }}
+            animate={{ left: '130%', opacity: [0, 0.9, 0] }}
+            transition={{ duration: 0.62, ease: EXPO_OUT, times: [0, 0.4, 1] }}
+          />
+        </div>
+      )}
       {/* Label flare: briefly saturates to accent on entry, settles to ink. */}
       <m.span
         key={`label-${label}`}
@@ -307,6 +352,7 @@ export function ActiveBubble({
           padding: '0 8px',
           textAlign: 'center',
           lineHeight: 1.1,
+          position: 'relative',
         }}
         initial={isRoot ? { color: theme.ink } : { color: theme.accent }}
         animate={{ color: theme.ink }}
@@ -315,146 +361,6 @@ export function ActiveBubble({
         {label}
       </m.span>
     </m.div>
-  );
-}
-
-// =============================================================================
-// SettledNode — past path entry behind the current active. Smaller and dimmer,
-// reads as "you've been here." Clickable when not drawing → jump-back nav.
-// =============================================================================
-export function SettledNode({
-  pos,
-  label,
-  isRoot,
-  theme,
-  onJumpBack,
-  reduceMotion = false,
-}: {
-  pos: Vec;
-  label: string;
-  isRoot: boolean;
-  theme: RadialDialTheme;
-  /** When provided, settled node becomes a clickable "jump back to here" target. */
-  onJumpBack?: () => void;
-  /** Honor prefers-reduced-motion — no idle pulse. */
-  reduceMotion?: boolean;
-}) {
-  const isLight = theme.mode === 'light';
-  const interactive = !!onJumpBack;
-  // Root settled shows a quiet "·" — clicking would reset (handled by reset button).
-  const showLabel = !isRoot;
-  // Stable random offset so adjacent settled nodes don't pulse in sync.
-  // Issue #10 — broadcasts "clickable" affordance at rest.
-  const pulsePhase = useMemo(() => Math.random() * 0.8, []);
-  return (
-    <m.button
-      type="button"
-      onClick={onJumpBack}
-      disabled={!interactive}
-      role="menuitem"
-      // aria-current="false" — these are PRIOR steps in the menu hierarchy,
-      // not the active step. The active step gets aria-current="step" on
-      // ActiveBubble. Issue #11.
-      aria-current={false}
-      aria-label={interactive ? `Jump back to ${label}` : label}
-      // Tooltip on hover, native UA timing. Issue #10.
-      title={interactive ? 'Click to jump back here' : undefined}
-      className={`absolute flex items-center justify-center ${interactive ? '' : 'pointer-events-none'}`}
-      style={{
-        left: pos.x - SETTLED_DIAMETER / 2,
-        top: pos.y - SETTLED_DIAMETER / 2,
-        width: SETTLED_DIAMETER,
-        height: SETTLED_DIAMETER,
-        borderRadius: '50%',
-        background: mixTwo(theme.paper, isLight ? 76 : 88, theme.ink, isLight ? 3 : 5),
-        boxShadow: [
-          `inset 0 0 0 1px ${mix(theme.ink, isLight ? 30 : 26)}`,
-          `0 1px 2px ${mix(theme.ink, isLight ? 6 : 16)}`,
-        ].join(', '),
-        zIndex: 4,
-        border: 'none',
-        padding: 0,
-        cursor: interactive ? 'pointer' : 'default',
-        transitionProperty: 'box-shadow, background, transform',
-        transitionDuration: '180ms',
-        transitionTimingFunction: `cubic-bezier(${SMOOTH_OUT.join(',')})`,
-      }}
-      initial={{ scale: ACTIVE_DIAMETER / SETTLED_DIAMETER, opacity: 0.85 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 240, damping: 26, mass: 0.7 }}
-      onMouseEnter={e => {
-        if (!interactive) return;
-        e.currentTarget.style.boxShadow = [
-          `inset 0 0 0 1.5px ${mix(theme.accent, 50)}`,
-          `0 4px 14px ${mix(theme.accent, 18)}`,
-        ].join(', ');
-        e.currentTarget.style.transform = 'scale(1.06)';
-      }}
-      onMouseLeave={e => {
-        if (!interactive) return;
-        e.currentTarget.style.boxShadow = [
-          `inset 0 0 0 1px ${mix(theme.ink, isLight ? 30 : 26)}`,
-          `0 1px 2px ${mix(theme.ink, isLight ? 6 : 16)}`,
-        ].join(', ');
-        e.currentTarget.style.transform = 'scale(1)';
-      }}
-      onFocus={e => {
-        if (!interactive) return;
-        e.currentTarget.style.boxShadow = [
-          `inset 0 0 0 1.5px ${mix(theme.accent, 60)}`,
-          `0 0 0 2px ${mix(theme.accent, 30)}`,
-        ].join(', ');
-      }}
-      onBlur={e => {
-        e.currentTarget.style.boxShadow = [
-          `inset 0 0 0 1px ${mix(theme.ink, isLight ? 30 : 26)}`,
-          `0 1px 2px ${mix(theme.ink, isLight ? 6 : 16)}`,
-        ].join(', ');
-      }}
-    >
-      {/* Inner pulse — slow scale [1, 1.02, 1] over 2.4s broadcasts the
-          "click to change" affordance at rest. Paused when non-interactive
-          or under prefers-reduced-motion. Out-of-sync per-bubble via random
-          phase. Issue #10. */}
-      <m.div
-        className="flex items-center justify-center"
-        style={{ width: '100%', height: '100%' }}
-        animate={
-          interactive && !reduceMotion
-            ? { scale: [1, 1.02, 1] }
-            : { scale: 1 }
-        }
-        transition={
-          interactive && !reduceMotion
-            ? {
-                duration: 2.4,
-                repeat: Infinity,
-                ease: 'easeInOut',
-                delay: pulsePhase,
-              }
-            : { duration: 0.2 }
-        }
-      >
-        <span
-          style={{
-            fontSize: showLabel ? 12 : 14,
-            color: mix(theme.ink, isLight ? 60 : 70),
-            fontFamily: theme.serif,
-            fontStyle: 'italic',
-            letterSpacing: '0.005em',
-            padding: '0 4px',
-            textAlign: 'center',
-            lineHeight: 1.1,
-            maxWidth: SETTLED_DIAMETER - 12,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {isRoot ? '·' : label.toLowerCase()}
-        </span>
-      </m.div>
-    </m.button>
   );
 }
 
@@ -614,13 +520,34 @@ export function IdleGhost({
   // Per-bubble random breath phase so siblings don't pulse in sync. Stable
   // across re-renders of this bubble (useMemo with empty deps). Issue #312.
   const breathDelay = useMemo(() => Math.random() * 1.5, []);
+
+  // Frosted-glass surface. The translucent fill (with light-catch sheen) is
+  // CONSTANT — hover/focus are expressed purely through the accent rim + glow
+  // in `boxShadow`, so the sheen never disappears on interaction.
+  // Slightly higher fill alpha than before so the pane reads as a real
+  // option, not a ghost outline — the earlier glass values vanished on the
+  // light cream background.
+  const glass = glassSurface(theme, { alpha: isLight ? 62 : 40, blur: 10 });
+  const boxShadow = {
+    // A legible ink ring is the key fix: the glass white rim alone is
+    // invisible on light themes, so options "disappeared". This gives every
+    // pane a clear edge on any background while staying glassy.
+    rest: `${glass.glassShadow}, inset 0 0 0 1.25px ${mix(theme.ink, isLight ? 24 : 30)}`,
+    hover: `${glass.glassShadow}, inset 0 0 0 1.5px ${mix(theme.accent, 55)}, 0 6px 20px ${mix(theme.accent, 18)}`,
+    focused: `${glass.glassShadow}, inset 0 0 0 1.5px ${mix(theme.accent, 60)}, 0 0 0 2px ${mix(theme.accent, 28)}, 0 6px 20px ${mix(theme.accent, 18)}`,
+  };
   return (
     <m.button
       type="button"
-      onClick={onSelect}
-      // stopPropagation on pointer-down so the stage doesn't simultaneously
-      // start a drag gesture. Click commits cleanly without engine involvement.
-      onPointerDown={e => e.stopPropagation()}
+      // VISUAL HINT, not a pointer target. pointer-events:none (below) means a
+      // press "on" an option falls straight through to the stage, which opens
+      // the centred marking menu and homes this option by direction — so the
+      // gesture is ONE system (press → drag/tap → commit), restarting fresh on
+      // every press. Keyboard still works: a focused option fires click with
+      // detail === 0 (no pointer), which we commit here.
+      onClick={e => {
+        if (e.detail === 0) onSelect?.();
+      }}
       disabled={!interactive}
       role="menuitem"
       aria-label={interactive ? `Choose ${label}` : label}
@@ -631,22 +558,23 @@ export function IdleGhost({
         width: OPTION_DIAMETER,
         height: OPTION_DIAMETER,
         borderRadius: '50%',
-        background: focused
-          ? mixTwo(theme.paper, 88, theme.accent, 6)
-          : mix(theme.paper, isLight ? 60 : 50, theme.paper),
-        // Keyboard-focused ring matches hover style for consistency. Issue #26.
-        boxShadow: focused
-          ? `inset 0 0 0 1.5px ${mix(theme.accent, 60)}, 0 0 0 2px ${mix(theme.accent, 30)}, 0 4px 14px ${mix(theme.accent, 18)}`
-          : `inset 0 0 0 1.5px ${mix(theme.ink, isLight ? 14 : 22)}`,
+        // Frosted glass — the ink trails + planets behind shimmer through.
+        background: glass.background,
+        backdropFilter: glass.backdropFilter,
+        WebkitBackdropFilter: glass.WebkitBackdropFilter,
+        border: focused ? `1px solid ${mix(theme.accent, 45)}` : glass.border,
+        boxShadow: focused ? boxShadow.focused : boxShadow.rest,
         color: focused
           ? mixTwo(theme.accent, 80, theme.ink, 20)
-          : mix(theme.ink, 70),
+          : mix(theme.ink, 86),
         zIndex: focused ? 5 : 4,
-        border: 'none',
         padding: 0,
-        cursor: interactive ? 'pointer' : 'default',
-        transitionProperty: 'box-shadow, background, color',
-        transitionDuration: '180ms',
+        // Hint only — presses pass through to the stage (one-system gesture).
+        // Keyboard focus + activation still work (pointer-events doesn't gate
+        // keyboard). The cursor stays 'grab' from the stage beneath.
+        pointerEvents: 'none',
+        transitionProperty: 'box-shadow, color, border-color',
+        transitionDuration: '200ms',
         transitionTimingFunction: `cubic-bezier(${SMOOTH_OUT.join(',')})`,
       }}
       initial={{ opacity: 0, scale: 0.7 }}
@@ -662,22 +590,24 @@ export function IdleGhost({
       }}
       onMouseEnter={e => {
         if (!interactive) return;
-        e.currentTarget.style.background = mixTwo(theme.paper, 88, theme.accent, 6);
-        e.currentTarget.style.boxShadow = `inset 0 0 0 1.5px ${mix(theme.accent, 50)}, 0 4px 14px ${mix(theme.accent, 16)}`;
+        e.currentTarget.style.borderColor = mix(theme.accent, 45);
+        e.currentTarget.style.boxShadow = boxShadow.hover;
         e.currentTarget.style.color = mixTwo(theme.accent, 80, theme.ink, 20);
       }}
       onMouseLeave={e => {
         if (!interactive) return;
-        e.currentTarget.style.background = mix(theme.paper, isLight ? 60 : 50, theme.paper);
-        e.currentTarget.style.boxShadow = `inset 0 0 0 1.5px ${mix(theme.ink, isLight ? 14 : 22)}`;
-        e.currentTarget.style.color = mix(theme.ink, 70);
+        e.currentTarget.style.borderColor = isLight
+          ? 'rgba(255,255,255,0.55)'
+          : 'rgba(255,255,255,0.14)';
+        e.currentTarget.style.boxShadow = boxShadow.rest;
+        e.currentTarget.style.color = mix(theme.ink, 86);
       }}
       onFocus={e => {
         if (!interactive) return;
-        e.currentTarget.style.boxShadow = `inset 0 0 0 1.5px ${mix(theme.accent, 60)}, 0 0 0 2px ${mix(theme.accent, 30)}`;
+        e.currentTarget.style.boxShadow = boxShadow.focused;
       }}
       onBlur={e => {
-        e.currentTarget.style.boxShadow = `inset 0 0 0 1.5px ${mix(theme.ink, isLight ? 14 : 22)}`;
+        e.currentTarget.style.boxShadow = boxShadow.rest;
       }}
     >
       {/* Inner breath — surface-tension pulse on a still bubble. Out of sync
@@ -744,6 +674,8 @@ export function SubMenuGhost({
   const SIZE = OPTION_DIAMETER * 0.7;
   const isLight = theme.mode === 'light';
   const opacity = Math.min(0.5, strength * 0.65);
+  // Lighter, blurrier glass than the real options — reads as a "ghost" pane.
+  const glass = glassSurface(theme, { alpha: isLight ? 40 : 26, blur: 8 });
   return (
     <m.div
       className="pointer-events-none absolute flex items-center justify-center"
@@ -753,8 +685,11 @@ export function SubMenuGhost({
         width: SIZE,
         height: SIZE,
         borderRadius: '50%',
-        background: mix(theme.paper, isLight ? 50 : 40, theme.paper),
-        boxShadow: `inset 0 0 0 1px ${mix(theme.accent, 18 + strength * 18)}`,
+        background: glass.background,
+        backdropFilter: glass.backdropFilter,
+        WebkitBackdropFilter: glass.WebkitBackdropFilter,
+        border: glass.border,
+        boxShadow: `${glass.glassShadow}, inset 0 0 0 1px ${mix(theme.accent, 18 + strength * 18)}`,
         color: mix(theme.accent, 60),
         zIndex: 3,
       }}

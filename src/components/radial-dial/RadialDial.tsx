@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, m } from 'framer-motion';
+import { AnimatePresence, LazyMotion, domMax, m } from 'framer-motion';
 import {
   applyMagneticPull,
   inkFullPath,
@@ -22,7 +22,6 @@ import {
   MAX_OPTION_PULL,
   OPTION_DIAMETER,
   SETTLED_TRIM_RADIUS,
-  SMOOTH_OUT,
 } from './geometry';
 
 /**
@@ -63,15 +62,45 @@ function computeStageScale(stageSize: { w: number; h: number }): number {
   const raw = halfMin / target;
   return Math.max(MIN_SCALE, Math.min(1, raw));
 }
+
+/**
+ * Depth-parallax layer style. Fills the stage and translates by the cursor
+ * offset (--rd-parallax-x/y, -1..1) scaled by `depth` px — bigger depth =
+ * moves more = reads as closer to the viewer. The transition adds a gentle
+ * trailing inertia so layers feel like they have mass at distance.
+ *
+ * pointer-events:none so the layer never blocks the stage's drag gesture;
+ * interactive children inside (option/planet buttons) re-enable pointer
+ * events on themselves with pointerEvents:'auto'.
+ *
+ * IMPORTANT: a `transform` makes this element a new stacking context, so the
+ * z-index of children no longer competes globally — the LAYER's own z-index
+ * decides where the whole group paints. We pass it explicitly to preserve the
+ * original paint order (planets below options, both below the active bubble).
+ */
+/** Diameter of the accent vignette glow that follows the active node. */
+const VIGNETTE_SIZE = 760;
+
+function parallaxLayer(depth: number, zIndex: number): React.CSSProperties {
+  return {
+    position: 'absolute',
+    inset: 0,
+    zIndex,
+    pointerEvents: 'none',
+    transform: `translate3d(calc(var(--rd-parallax-x, 0) * ${depth}px), calc(var(--rd-parallax-y, 0) * ${depth}px), 0)`,
+    transition: 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
+    willChange: 'transform',
+  };
+}
 import {
   ActiveBubble,
   CursorHalo,
   IdleGhost,
   IdleRoot,
   OptionBubble,
-  SettledNode,
   SubMenuGhost,
 } from './bubbles';
+import { PlanetaryTrail } from './planets';
 import {
   FrozenStrokeLayer,
   InkMeniscus,
@@ -148,8 +177,46 @@ export function RadialDial({
   applyLabel = 'Apply',
 }: RadialDialProps) {
   const stageRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const reduceMotion = usePrefersReducedMotion();
+
+  // Cursor → CSS-variable bridge. A single RAF-throttled pointer listener on
+  // the root writes the cursor's position as custom properties:
+  //   --rd-sheen-x / --rd-sheen-y   → directional light source for the glass
+  //   --rd-parallax-x / --rd-parallax-y → -1..1 offset for depth parallax
+  // Writing CSS vars (not React state) means zero re-renders per mouse move —
+  // every glass pane + parallax layer reacts purely in CSS/compositor.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || reduceMotion) return;
+    let raf = 0;
+    let pending: { x: number; y: number } | null = null;
+    const flush = () => {
+      raf = 0;
+      if (!pending) return;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return;
+      const fx = (pending.x - r.left) / r.width; // 0..1
+      const fy = (pending.y - r.top) / r.height; // 0..1
+      // Sheen: light source follows cursor X fully; Y stays in the upper band
+      // (0–45%) so glass reads as lit from above-ish, never from below.
+      el.style.setProperty('--rd-sheen-x', `${(fx * 100).toFixed(1)}%`);
+      el.style.setProperty('--rd-sheen-y', `${(fy * 45).toFixed(1)}%`);
+      // Parallax: signed offset from centre, -1..1.
+      el.style.setProperty('--rd-parallax-x', (fx * 2 - 1).toFixed(3));
+      el.style.setProperty('--rd-parallax-y', (fy * 2 - 1).toFixed(3));
+    };
+    const onMove = (e: PointerEvent) => {
+      pending = { x: e.clientX, y: e.clientY };
+      if (!raf) raf = requestAnimationFrame(flush);
+    };
+    el.addEventListener('pointermove', onMove);
+    return () => {
+      el.removeEventListener('pointermove', onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [reduceMotion]);
 
   // Stage-fit scale — uniformly shrinks fan radius + commit distance on
   // narrow viewports so the dial never falls off the edge. See
@@ -237,9 +304,12 @@ export function RadialDial({
   // Pointer event adapters — pass the stage element through.
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (stageRef.current) dial.onPointerDown(e, stageRef.current);
+      // Anchor every press at the dial centre so the menu always opens where
+      // the idle hints sit — a press anywhere re-presents the level-1 menu
+      // from the root, fresh. (Issue: "restart from the start every time.")
+      if (stageRef.current) dial.onPointerDown(e, stageRef.current, idleAnchor);
     },
-    [dial],
+    [dial, idleAnchor],
   );
   // Idle-state hover tracking — drives the sneak-peek ghost preview of
   // level-1 children when the cursor approaches the root.
@@ -293,38 +363,28 @@ export function RadialDial({
     setFocusedOptionIndex(null);
   }, [dial.phase, dial.path.length]);
 
-  // Always-visible options — computed early because the keyboard handler
-  // (below) needs to reach them for arrow-key cycling.
-  //
-  // - Phase 'idle'      → tree.children (level-1 categories)
-  // - Phase 'committed' → activeEntry.children (next level after last commit)
-  // - Phase 'drawing'   → null (real options render via the drawing flow)
+  // Idle menu hints — the level-1 options shown faintly around the centred
+  // root ONLY at idle. They preview "here's the top of the menu". During a
+  // gesture the real OptionBubble fan takes over; after a commit you see the
+  // result (planet trail + readout), and the next press re-opens this menu
+  // fresh from the root. Showing these only at idle (not committed) is what
+  // stops stale option circles from accumulating between selections.
   const persistentOptions = useMemo(() => {
-    if (dial.phase === 'drawing') return null;
-    const activeNode = dial.activeEntry?.node ?? tree;
-    const children = activeNode.children;
+    if (dial.phase !== 'idle') return null;
+    const children = tree.children;
     if (!children?.length) return null;
-    const anchor = dial.activeEntry?.pos ?? idleAnchor;
-    const grandparent =
-      dial.path.length >= 2 ? dial.path[dial.path.length - 2].pos : null;
-    const positions = placeChildren(anchor, grandparent, children.length, fanRadius);
+    const positions = placeChildren(idleAnchor, null, children.length, fanRadius);
     return children.map((node, i) => ({ node, pos: positions[i] }));
-  }, [dial.phase, dial.activeEntry, dial.path, tree, idleAnchor, fanRadius]);
-  // Keyboard handler — Escape pops one level (back-out navigation).
-  // Enter applies (committed) OR commits focused option.
+  }, [dial.phase, tree, idleAnchor, fanRadius]);
+  // Keyboard handler — Enter applies (committed) OR commits focused option.
   // ArrowLeft/Right cycle the focused option clockwise/counter-clockwise.
   // ArrowUp focuses the option closest to 12 o'clock.
   // ArrowDown commits the focused option.
-  // Issues #11, #12, #26.
+  // NOTE: Escape is handled by a single global listener in useRadialDial
+  // (pop one level); we deliberately do NOT handle it here to avoid a
+  // double-pop. Issues #11, #12, #26.
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // Escape — back out one level.
-      if (e.key === 'Escape' && dial.path.length > 1) {
-        e.preventDefault();
-        dial.popToLevel(dial.path.length - 2);
-        setFocusedOptionIndex(null);
-        return;
-      }
       // Don't capture arrow keys / enter mid-drag — drag owns input.
       if (dial.phase === 'drawing') return;
 
@@ -364,11 +424,17 @@ export function RadialDial({
         return;
       }
 
+      // Anchor for committing — the dial's current centre (active node when
+      // drilling, idle centre otherwise). Must match the mouse path, which
+      // passes idleAnchor, NOT the option's off-centre fan position; passing
+      // the latter would plant the root off-centre on the first commit.
+      const commitAnchor = dial.activeEntry?.pos ?? idleAnchor;
+
       if (e.key === 'ArrowDown') {
         if (focusedOptionIndex === null || len === 0) return;
         e.preventDefault();
         const opt = options[focusedOptionIndex];
-        if (opt) dial.selectChild(opt.node, opt.pos);
+        if (opt) dial.selectChild(opt.node, commitAnchor);
         setFocusedOptionIndex(null);
         return;
       }
@@ -378,7 +444,7 @@ export function RadialDial({
         if (focusedOptionIndex !== null && len > 0) {
           e.preventDefault();
           const opt = options[focusedOptionIndex];
-          if (opt) dial.selectChild(opt.node, opt.pos);
+          if (opt) dial.selectChild(opt.node, commitAnchor);
           setFocusedOptionIndex(null);
           return;
         }
@@ -525,7 +591,14 @@ export function RadialDial({
   }, [count, dial.homed, dial.visibleChildren]);
 
   return (
+    // LazyMotion loads the `domMax` feature bundle so the lightweight `m`
+    // components actually animate. WITHOUT this, every `m.*` element renders
+    // frozen at its `initial` state — options stuck at opacity:0 (invisible),
+    // nothing transitions (janky snaps). domMax (not domAnimation) because the
+    // dial uses `layout` (PathLine FLIP), `whileTap`, and AnimatePresence exits.
+    <LazyMotion features={domMax}>
     <m.div
+      ref={rootRef}
       className="relative h-full w-full overflow-hidden select-none"
       style={{
         backgroundColor: theme.paper,
@@ -537,32 +610,63 @@ export function RadialDial({
         cursor: dial.phase === 'drawing' ? 'grabbing' : 'grab',
         WebkitFontSmoothing: 'antialiased',
         MozOsxFontSmoothing: 'grayscale',
+        // Seed defaults for the cursor-driven custom props so glass + parallax
+        // render sensibly before the first pointer move. (CSS var fallbacks in
+        // the consumers also cover this, but seeding keeps SSR/first-paint clean.)
+        ['--rd-sheen-x' as string]: '28%',
+        ['--rd-sheen-y' as string]: '4%',
+        ['--rd-parallax-x' as string]: '0',
+        ['--rd-parallax-y' as string]: '0',
       }}
       // Subtle stage parallax — entire page floats Y by 1.5px on a 14s sine.
       // Time dilates 2.5x when user is drawing — the page "settles" to listen.
       animate={reduceMotion ? {} : { y: [0, -1.5, 0, 1.5, 0] }}
       transition={{ duration: 14 * ambientDilation, repeat: Infinity, ease: 'easeInOut' }}
     >
-      {/* Vignette overlay — accent radial gradient that follows active.
-          Breathing slows when user is attentive (drawing). */}
+      {/* Vignette glow — a fixed-size accent radial that FOLLOWS the active
+          node via transform (not an animated background-image, which would
+          repaint the whole layer every move). The gradient is centred on its
+          own box; we translate the box to the anchor. GPU-only. */}
       <m.div
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute"
         style={{
-          backgroundImage: `radial-gradient(circle at ${anchor.x}px ${anchor.y}px, ${mix(theme.accent, 8)} 0%, transparent 38%)`,
-          transition: `background-image 320ms cubic-bezier(${SMOOTH_OUT.join(',')})`,
+          left: 0,
+          top: 0,
+          width: VIGNETTE_SIZE,
+          height: VIGNETTE_SIZE,
+          borderRadius: '50%',
+          background: `radial-gradient(circle at center, ${mix(theme.accent, 9)} 0%, transparent 58%)`,
+          willChange: 'transform',
         }}
-        animate={reduceMotion ? {} : { opacity: [0.55, 1, 0.55] }}
-        transition={{ duration: 6 * ambientDilation, repeat: Infinity, ease: 'easeInOut' }}
+        // x/y track the anchor (active node or idle centre); the spring gives
+        // the glow a gentle lag so it "settles" toward where you are.
+        animate={{
+          x: anchor.x - VIGNETTE_SIZE / 2,
+          y: anchor.y - VIGNETTE_SIZE / 2,
+          opacity: reduceMotion ? 0.7 : [0.5, 0.85, 0.5],
+        }}
+        transition={{
+          x: { type: 'spring', stiffness: 90, damping: 26, mass: 1 },
+          y: { type: 'spring', stiffness: 90, damping: 26, mass: 1 },
+          opacity: { duration: 6 * ambientDilation, repeat: Infinity, ease: 'easeInOut' },
+        }}
       />
-      {/* Paper noise overlay — drifts position slowly. Even slower while drawing. */}
+      {/* Paper noise overlay — drifts slowly via TRANSFORM (not background-
+          position, which repaints). Over-sized by 16px on every edge so the
+          ±8px drift never reveals a gap. */}
       {theme.noise && (
         <m.div
-          className="pointer-events-none absolute inset-0"
+          className="pointer-events-none absolute"
           style={{
+            top: -16,
+            left: -16,
+            right: -16,
+            bottom: -16,
             backgroundImage: theme.noise,
             backgroundRepeat: 'repeat',
+            willChange: reduceMotion ? undefined : 'transform',
           }}
-          animate={reduceMotion ? {} : { backgroundPositionX: ['0px', '8px', '0px'], backgroundPositionY: ['0px', '6px', '0px'] }}
+          animate={reduceMotion ? {} : { x: [0, 8, 0], y: [0, 6, 0] }}
           transition={{ duration: 60 * ambientDilation, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
@@ -769,7 +873,11 @@ export function RadialDial({
         {/* Persistent options — ALWAYS visible when not drawing. Faintly
             present at rest (35% baseline), brighten with cursor proximity,
             click any to commit directly. The drag gesture remains as a
-            bonus — both interaction modes coexist. */}
+            bonus — both interaction modes coexist.
+            NOTE: deliberately NOT wrapped in a parallax (transform) layer —
+            an ancestor transform establishes a backdrop-root and would kill
+            these glass panes' frost. Their depth comes from the planet layer
+            drifting behind them instead. */}
         <AnimatePresence>
           {persistentOptions &&
             persistentOptions.map((c, i) => (
@@ -789,27 +897,33 @@ export function RadialDial({
             ))}
         </AnimatePresence>
 
-        {/* Settled past nodes — the trail of where we've been. Now CLICKABLE:
-            tap any settled node to jump back to that level (undo to here).
-            The trail itself becomes the navigation. Affordance hint visible
-            on hover post-release. Disabled mid-gesture (would conflict with
-            pointer capture) — settled nodes are interactive only when phase
-            is not 'drawing'. */}
-        {dial.path.slice(0, -1).map((entry, i) => (
-          <SettledNode
-            key={`settled-${i}-${entry.node.id}`}
-            pos={entry.pos}
-            label={entry.node.label}
-            isRoot={i === 0}
+        {/* Settled past nodes — rendered as a little SOLAR SYSTEM. Each
+            committed choice is a planet that gently orbits its anchor;
+            adjacent planets feel each other's gravity (the "vicinity"),
+            leaning together when their orbits drift close, with a glowing
+            field between them. The root is the warm sun. Clicking a planet
+            jumps back to that level. Frozen mid-gesture (pointer-capture
+            conflict) and under prefers-reduced-motion.
+            Parallax depth 2 — a whisper of depth behind the static glass
+            options. Kept small (was 5) so the trail doesn't visibly drift
+            away from the ink that connects to its anchors. (Only the solid
+            layer parallaxes; glass can't sit inside a transform.) */}
+        <div style={reduceMotion ? { position: 'absolute', inset: 0, zIndex: 3, pointerEvents: 'none' } : parallaxLayer(2, 3)}>
+          <PlanetaryTrail
+            entries={dial.path.slice(0, -1).map((entry, i) => ({
+              node: entry.node,
+              pos: entry.pos,
+              isRoot: i === 0,
+            }))}
             theme={theme}
+            reduceMotion={reduceMotion}
             onJumpBack={
-              dial.phase !== 'drawing' && i >= 1
-                ? () => dial.popToLevel(i - 1)
+              dial.phase !== 'drawing'
+                ? (i: number) => dial.popToLevel(i - 1)
                 : undefined
             }
-            reduceMotion={reduceMotion}
           />
-        ))}
+        </div>
 
         {/* Active node — the current focus. Enters scaled to option size and
             springs DOWN to its smaller settled size (the "shrink to normal"
@@ -822,6 +936,7 @@ export function RadialDial({
             theme={theme}
             justPressed={dial.path.length === 1 && dial.phase === 'drawing'}
             approachStrength={dial.homed?.strength ?? 0}
+            reduceMotion={reduceMotion}
           />
         )}
 
@@ -879,6 +994,7 @@ export function RadialDial({
       </div>
 
     </m.div>
+    </LazyMotion>
   );
 }
 

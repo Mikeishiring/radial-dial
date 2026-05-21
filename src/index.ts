@@ -41,6 +41,7 @@ export {
   ALL_THEMES,
   mix,
   mixTwo,
+  glassSurface,
 } from './components/radial-dial/themes';
 
 export {

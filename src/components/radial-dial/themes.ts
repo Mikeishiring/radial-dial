@@ -86,3 +86,53 @@ export function mixTwo(a: string, aPct: number, b: string, bPct: number) {
   // Result: a at aPct%, blended with (b at bPct% in a) — gives correct tint.
   return `color-mix(in srgb, ${a} ${aPct}%, ${b} ${bPct}%)`;
 }
+
+/**
+ * Frosted-glass surface — the iOS "things floating above the page" look.
+ *
+ * Returns the four CSS pieces that, together, read as glass:
+ *   1. `background` — a translucent fill so the blurred backdrop shows through
+ *   2. `backdropFilter` — blur + saturate(180%) so colours behind stay vivid
+ *   3. `border` — a faint bright edge (glass rim)
+ *   4. `glassShadow` — soft drop shadow + an inset top-edge specular highlight
+ *      (the bit that makes it look like it's catching light). Compose it with
+ *      any accent glow you want: `boxShadow: [g.glassShadow, myGlow].join(',')`.
+ *
+ * `fill` defaults to the theme's paper; pass `theme.accent` (with a lower
+ * `alpha`) for an accent-tinted glass (e.g. a homed/selected option).
+ */
+export function glassSurface(
+  theme: RadialDialTheme,
+  opts: { fill?: string; alpha?: number; blur?: number } = {},
+): {
+  background: string;
+  backdropFilter: string;
+  WebkitBackdropFilter: string;
+  border: string;
+  glassShadow: string;
+} {
+  const isLight = theme.mode === 'light';
+  const fill = opts.fill ?? theme.paper;
+  const alpha = opts.alpha ?? (isLight ? 55 : 36); // % opacity of the fill
+  const blur = opts.blur ?? 14;
+  // Specular rim + soft drop. Light themes catch a white top edge; dark
+  // themes use a softer white highlight + deeper drop for depth.
+  const glassShadow = isLight
+    ? `0 8px 26px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.65)`
+    : `0 10px 30px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.12)`;
+  // Light-catch — a soft bright sheen painted ON TOP of the translucent fill
+  // (backdrop blur sits behind both). The gradient ORIGIN tracks the cursor
+  // via the --rd-sheen-x/y custom properties (set on the dial root), so the
+  // highlight slides across every pane like a single directional light source
+  // moving with the pointer. Falls back to a fixed top-left catch (28% 4%)
+  // before the first pointer move / under reduced motion. This is the detail
+  // that makes a pane read as "glass catching light" rather than "blurred div".
+  const sheen = isLight ? 0.4 : 0.13;
+  return {
+    background: `radial-gradient(135% 95% at var(--rd-sheen-x, 28%) var(--rd-sheen-y, 4%), rgba(255,255,255,${sheen}) 0%, rgba(255,255,255,0) 46%), color-mix(in srgb, ${fill} ${alpha}%, transparent)`,
+    backdropFilter: `blur(${blur}px) saturate(180%)`,
+    WebkitBackdropFilter: `blur(${blur}px) saturate(180%)`,
+    border: `1px solid ${isLight ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.14)'}`,
+    glassShadow,
+  };
+}

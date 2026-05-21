@@ -139,8 +139,13 @@ export function useRadialDial({
   );
 
   // --- Pointer handlers ------------------------------------------------------
+  // Every press starts a FRESH gesture from the root. The root anchors at a
+  // fixed `origin` (the dial centre) — not the press point — so the menu
+  // always opens in the same place the idle hints sit (no jump), and a press
+  // anywhere re-presents the full level-1 menu. This full reset on every
+  // pointerdown is what guarantees no stale circles linger between gestures.
   const onPointerDown = useCallback(
-    (e: React.PointerEvent, stage: HTMLElement) => {
+    (e: React.PointerEvent, stage: HTMLElement, origin?: Vec) => {
       try {
         stage.setPointerCapture(e.pointerId);
       } catch {
@@ -148,15 +153,17 @@ export function useRadialDial({
       }
       const rect = stage.getBoundingClientRect();
       const press = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const rootPos = origin ?? press;
       phaseRef.current = 'drawing';
       setPhase('drawing');
       setCommitted(null);
-      const initialPath = [{ node: tree, pos: press }];
+      const initialPath = [{ node: tree, pos: rootPos }];
       pathRef.current = initialPath;
       setPath(initialPath);
       setPointer(press);
       setFrozenStrokes([]);
-      liveStrokeRef.current = [{ ...press, t: performance.now(), v: 0 }];
+      // Ink starts at the centre (rootPos) and follows the cursor outward.
+      liveStrokeRef.current = [{ ...rootPos, t: performance.now(), v: 0 }];
       rawHistoryRef.current = [press];
       armedRef.current = true;
       bumpRender();
@@ -294,22 +301,95 @@ export function useRadialDial({
       } catch {
         /* noop */
       }
-      phaseRef.current = 'committed';
-      setPhase('committed');
       setPointer(null);
+      const rect = stage.getBoundingClientRect();
+      const release = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       const livePath = pathRef.current;
+
+      // CASE 1 — drag-through already committed levels. Finalize the path.
       if (livePath.length > 1) {
+        phaseRef.current = 'committed';
+        setPhase('committed');
         const nodes = livePath.slice(1).map(p => p.node);
         setCommitted(nodes);
         onComplete?.({ nodes });
-      } else {
-        phaseRef.current = 'idle';
-        setPhase('idle');
+        liveStrokeRef.current = [];
+        bumpRender();
+        return;
       }
+
+      // CASE 2 — tap. Only the root is in the path (no drag-commit). If the
+      // release landed near one of the level-1 options (e.g. a press-release
+      // on a visible option hint), commit that option. This is how a click
+      // selects without a drag — the homing direction picks the option.
+      const active = livePath[0];
+      const children = active?.node.children;
+      if (active && children?.length) {
+        const positions = placeChildren(active.pos, null, children.length, fanRadiusRef.current);
+        let bestIdx = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < positions.length; i++) {
+          const d = Math.hypot(positions[i].x - release.x, positions[i].y - release.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
+        }
+        // Generous threshold (≈ 0.45 × fan radius) so a tap toward an option
+        // commits it even without landing dead-centre.
+        if (bestIdx >= 0 && bestDist < fanRadiusRef.current * 0.55) {
+          const chosen = children[bestIdx];
+          const pos = positions[bestIdx];
+          const now = performance.now();
+          // Synthesize a short curved stroke centre → option (drawn, not teleported).
+          const dx = pos.x - active.pos.x;
+          const dy = pos.y - active.pos.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const perpX = -dy / len;
+          const perpY = dx / len;
+          const N = 14;
+          const pts: InkPoint[] = [];
+          for (let i = 0; i <= N; i++) {
+            const t = i / N;
+            const bow = Math.sin(t * Math.PI) * len * 0.06;
+            pts.push({
+              x: active.pos.x + dx * t + perpX * bow,
+              y: active.pos.y + dy * t + perpY * bow,
+              t: now + i * 8,
+              v: 0.1 + Math.sin(t * Math.PI) * 0.45,
+            });
+          }
+          const newPath = [...livePath, { node: chosen, pos }];
+          const frozen: FrozenStroke = { id: `${chosen.id}-${now}`, points: pts, frozenAt: now };
+          pathRef.current = newPath;
+          setPath(newPath);
+          setFrozenStrokes([frozen]);
+          const nodes = newPath.slice(1).map(p => p.node);
+          setCommitted(nodes);
+          phaseRef.current = 'committed';
+          setPhase('committed');
+          onChange?.({ nodes });
+          onComplete?.({ nodes });
+          liveStrokeRef.current = [];
+          bumpRender();
+          return;
+        }
+      }
+
+      // CASE 3 — no selection (tap on empty centre, or abandoned drag). FULLY
+      // reset so nothing lingers; the next press re-opens the menu fresh.
+      pathRef.current = [];
+      setPath([]);
+      setFrozenStrokes([]);
+      setCommitted(null);
+      phaseRef.current = 'idle';
+      setPhase('idle');
+      armedRef.current = true;
+      onChange?.({ nodes: [] });
       liveStrokeRef.current = [];
       bumpRender();
     },
-    [onComplete],
+    [onComplete, onChange],
   );
 
   const reset = useCallback(() => {
@@ -323,8 +403,12 @@ export function useRadialDial({
     liveStrokeRef.current = [];
     rawHistoryRef.current = [];
     armedRef.current = true;
+    // Fire onChange with an empty path so consumers tracking the selection
+    // (e.g. a results preview) can clear their state. Previously reset was
+    // silent, which left downstream UI showing stale data after a reset.
+    onChange?.({ nodes: [] });
     bumpRender();
-  }, []);
+  }, [onChange]);
 
   /**
    * Direct selection — commit a child WITHOUT a drag gesture.
@@ -448,14 +532,25 @@ export function useRadialDial({
     [reset, onChange],
   );
 
-  // Esc resets — keyboard accessibility for committed state.
+  // Escape — single global authority for back-out. Pops exactly ONE level
+  // (incremental "refine"); repeated presses walk back to idle. This is a
+  // window listener so it works regardless of which element has focus (the
+  // stage, a results panel, etc.). The stage's own onKeyDown intentionally
+  // does NOT handle Escape, to avoid a double-pop.
+  //
+  // popToLevel(breadcrumbIndex) keeps path up to path[breadcrumbIndex+1], so
+  // to drop just the last entry we pass (len - 3); at the root (len <= 2)
+  // that resolves to a full reset to idle.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') reset();
+      if (e.key !== 'Escape') return;
+      const len = pathRef.current.length;
+      if (len <= 2) reset();
+      else popToLevel(len - 3);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reset]);
+  }, [reset, popToLevel]);
 
   return {
     // state

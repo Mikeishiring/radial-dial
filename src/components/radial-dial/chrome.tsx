@@ -96,7 +96,7 @@ export function PathLine({
             style={{
               fontSize: 17,
               fontStyle: 'italic',
-              color: mix(theme.ink, 50),
+              color: mix(theme.ink, 62),
               fontFamily: theme.serif,
               marginRight: 8,
             }}
@@ -168,7 +168,7 @@ export function PathLine({
             style={{
               fontSize: 17,
               fontStyle: 'italic',
-              color: mix(theme.ink, 50),
+              color: mix(theme.ink, 62),
               fontFamily: theme.serif,
               marginLeft: 8,
             }}

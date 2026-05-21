@@ -44,10 +44,10 @@ export const OPTION_DIAMETER = 112;
 export const ACTIVE_DIAMETER = 68;
 
 /**
- * Diameter of past-path settled bubbles (smallest, quiet markers).
- * Drives: SettledNode layout, ink trim radius at settled ends.
+ * Diameter of past-path settled nodes (smallest, quiet markers).
+ * Drives: PlanetaryTrail planet-core size, ink trim radius at settled ends.
  * Changing this: smaller values make the trail recede further; larger
- * values make settled nodes compete with the active bubble for attention.
+ * values make settled planets compete with the active bubble for attention.
  */
 export const SETTLED_DIAMETER = 64;
 
