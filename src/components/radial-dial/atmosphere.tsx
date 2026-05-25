@@ -331,13 +331,13 @@ export function AmbientRipple({ pos, theme }: { pos: Vec; theme: RadialDialTheme
 }
 
 // =============================================================================
-// FirstRunHint — discoverability arc for the press-and-drag gesture.
+// FirstRunHint — discoverability arc for the press-hold-drag gesture.
 //
 // New users tap, see the options, and never discover that drawing a line
 // commits faster. This component shows a faint dotted arc from the root
 // toward a target option after 3s of idle on first visit. One-shot only:
 // localStorage flag `radial-dial-hint-seen` suppresses on subsequent loads.
-// 8s total lifecycle: 3s wait, fade in (OVERSHOOT), hold, fade out (SMOOTH_OUT).
+// 6s total lifecycle: short wait, pressure ring, directional dots, fade out.
 // Skipped under prefers-reduced-motion. Issue #9.
 // =============================================================================
 const HINT_STORAGE_KEY = 'radial-dial-hint-seen';
@@ -369,7 +369,7 @@ export function FirstRunHint({
     } catch {
       // Storage unavailable — still show the hint, just don't persist.
     }
-    const showT = setTimeout(() => setPhase('showing'), 3000);
+    const showT = setTimeout(() => setPhase('showing'), 1200);
     const doneT = setTimeout(() => {
       setPhase('done');
       try {
@@ -379,7 +379,7 @@ export function FirstRunHint({
       } catch {
         // ignore
       }
-    }, 3000 + 5200);  // 3s wait + ~5s of fade-in/hold/fade-out
+    }, 1200 + 4800);
     return () => {
       clearTimeout(showT);
       clearTimeout(doneT);
@@ -402,6 +402,22 @@ export function FirstRunHint({
 
   return (
     <>
+      <m.div
+        className="pointer-events-none absolute"
+        style={{
+          left: rootPos.x - 28,
+          top: rootPos.y - 28,
+          width: 56,
+          height: 56,
+          borderRadius: '50%',
+          border: `1px solid ${mix(theme.accent, 42)}`,
+          boxShadow: `0 0 0 1px ${mix(theme.accent, 10)}, 0 0 28px ${mix(theme.accent, 16)}`,
+          zIndex: 6,
+        }}
+        initial={{ opacity: 0, scale: 0.82 }}
+        animate={{ opacity: [0, 0.65, 0.65, 0], scale: [0.82, 0.94, 1.06, 1.16] }}
+        transition={{ duration: 4.5, times: [0, 0.16, 0.7, 1], ease: SMOOTH_OUT }}
+      />
       {dots.map((d, i) => (
         <m.div
           key={`hint-dot-${i}`}

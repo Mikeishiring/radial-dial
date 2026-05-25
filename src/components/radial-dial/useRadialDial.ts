@@ -40,6 +40,8 @@ type Options = {
   onComplete?: (payload: DialPathPayload) => void;
 };
 
+type PointerStartMode = 'fresh' | 'continue';
+
 const DEFAULTS = {
   commitDistance: 158,
   settleRadius: 108,
@@ -139,13 +141,11 @@ export function useRadialDial({
   );
 
   // --- Pointer handlers ------------------------------------------------------
-  // Every press starts a FRESH gesture from the root. The root anchors at a
-  // fixed `origin` (the dial centre) — not the press point — so the menu
-  // always opens in the same place the idle hints sit (no jump), and a press
-  // anywhere re-presents the full level-1 menu. This full reset on every
-  // pointerdown is what guarantees no stale circles linger between gestures.
+  // Most presses start a FRESH gesture from the root. A committed branch can
+  // also be resumed: press-hold the active node and its children open from
+  // that node, preserving the trail already carved.
   const onPointerDown = useCallback(
-    (e: React.PointerEvent, stage: HTMLElement, origin?: Vec) => {
+    (e: React.PointerEvent, stage: HTMLElement, origin?: Vec, mode: PointerStartMode = 'fresh') => {
       try {
         stage.setPointerCapture(e.pointerId);
       } catch {
@@ -153,19 +153,23 @@ export function useRadialDial({
       }
       const rect = stage.getBoundingClientRect();
       const press = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const continuing = mode === 'continue' && pathRef.current.length > 0;
       const rootPos = origin ?? press;
+      const initialPath = continuing ? pathRef.current : [{ node: tree, pos: rootPos }];
+      const startPos = initialPath[initialPath.length - 1]?.pos ?? rootPos;
       phaseRef.current = 'drawing';
       setPhase('drawing');
       setCommitted(null);
-      const initialPath = [{ node: tree, pos: rootPos }];
       pathRef.current = initialPath;
       setPath(initialPath);
       setPointer(press);
-      setFrozenStrokes([]);
-      // Ink starts at the centre (rootPos) and follows the cursor outward.
-      liveStrokeRef.current = [{ ...rootPos, t: performance.now(), v: 0 }];
+      if (!continuing) setFrozenStrokes([]);
+      // Ink starts at the active node and follows the cursor outward.
+      liveStrokeRef.current = [{ ...startPos, t: performance.now(), v: 0 }];
       rawHistoryRef.current = [press];
-      armedRef.current = true;
+      // Continuing starts inside the active node. Do not let the first tiny
+      // movement read as a reverse-drag undo; require an outward escape first.
+      armedRef.current = !continuing;
       bumpRender();
     },
     [tree],
@@ -582,8 +586,9 @@ export function useRadialDial({
 /**
  * Place children radially around their parent.
  * - Root level (no grandparent): top / right / bottom / left for 4 children;
- *   evenly distributed for other counts. Up-first so the eye lands on Role.
- * - Deeper levels: 153° forward fan away from the grandparent direction.
+ *   evenly distributed for other counts. Up-first so the primary gesture stays
+ *   obvious and old muscle memory keeps working.
+ * - Deeper levels: forward fan away from the grandparent direction.
  */
 export function placeChildren(
   parent: Vec,

@@ -22,6 +22,7 @@ import {
   MAX_OPTION_PULL,
   OPTION_DIAMETER,
   SETTLED_TRIM_RADIUS,
+  SMOOTH_OUT,
 } from './geometry';
 
 /**
@@ -80,6 +81,7 @@ function computeStageScale(stageSize: { w: number; h: number }): number {
  */
 /** Diameter of the accent vignette glow that follows the active node. */
 const VIGNETTE_SIZE = 760;
+const CONTINUE_HIT_RADIUS = 92;
 
 function parallaxLayer(depth: number, zIndex: number): React.CSSProperties {
   return {
@@ -91,6 +93,101 @@ function parallaxLayer(depth: number, zIndex: number): React.CSSProperties {
     transition: 'transform 0.5s cubic-bezier(0.22, 1, 0.36, 1)',
     willChange: 'transform',
   };
+}
+
+function LatentChoiceTick({
+  anchor,
+  pos,
+  index,
+  theme,
+  reduceMotion,
+}: {
+  anchor: Vec;
+  pos: Vec;
+  index: number;
+  theme: RadialDialTheme;
+  reduceMotion: boolean;
+}) {
+  const dx = pos.x - anchor.x;
+  const dy = pos.y - anchor.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const tick = {
+    x: anchor.x + ux * Math.min(94, len * 0.5),
+    y: anchor.y + uy * Math.min(94, len * 0.5),
+  };
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+  return (
+    <m.div
+      className="pointer-events-none absolute"
+      aria-hidden
+      style={{
+        left: tick.x - 10,
+        top: tick.y - 1,
+        width: 20,
+        height: 2,
+        borderRadius: 999,
+        background: mix(theme.ink, theme.mode === 'light' ? 24 : 34),
+        boxShadow: `0 0 12px ${mix(theme.accent, theme.mode === 'light' ? 10 : 18)}`,
+        transformOrigin: 'center',
+        rotate: `${angle}deg`,
+        zIndex: 2,
+      }}
+      initial={{ opacity: 0, scaleX: 0.35 }}
+      animate={
+        reduceMotion
+          ? { opacity: 0.3, scaleX: 1 }
+          : { opacity: [0.2, 0.38, 0.2], scaleX: [0.72, 1, 0.72] }
+      }
+      exit={{ opacity: 0, scaleX: 0.35 }}
+      transition={{
+        duration: reduceMotion ? 0.2 : 3.4,
+        repeat: reduceMotion ? 0 : Infinity,
+        delay: index * 0.14,
+        ease: SMOOTH_OUT,
+      }}
+    />
+  );
+}
+
+function ContinuationHint({
+  pos,
+  stageSize,
+  theme,
+}: {
+  pos: Vec;
+  stageSize: { w: number; h: number };
+  theme: RadialDialTheme;
+}) {
+  const above = pos.y > stageSize.h - 150;
+  const top = above ? pos.y - 82 : pos.y + 52;
+  const left = Math.max(24, Math.min(stageSize.w - 224, pos.x - 112));
+
+  return (
+    <m.div
+      className="pointer-events-none absolute"
+      style={{
+        left,
+        top,
+        width: 224,
+        zIndex: 7,
+        textAlign: 'center',
+        fontFamily: theme.mono,
+        fontSize: 10,
+        letterSpacing: '0.16em',
+        textTransform: 'uppercase',
+        color: mix(theme.ink, theme.mode === 'light' ? 46 : 58),
+      }}
+      initial={{ opacity: 0, y: above ? 6 : -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: above ? 4 : -4 }}
+      transition={{ duration: 0.28, ease: SMOOTH_OUT }}
+    >
+      hold here for next level
+    </m.div>
+  );
 }
 import {
   ActiveBubble,
@@ -304,10 +401,23 @@ export function RadialDial({
   // Pointer event adapters — pass the stage element through.
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      // Anchor every press at the dial centre so the menu always opens where
-      // the idle hints sit — a press anywhere re-presents the level-1 menu
-      // from the root, fresh. (Issue: "restart from the start every time.")
-      if (stageRef.current) dial.onPointerDown(e, stageRef.current, idleAnchor);
+      const stage = stageRef.current;
+      if (!stage) return;
+      const rect = stage.getBoundingClientRect();
+      const press = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const active = dial.activeEntry;
+      const canContinue =
+        dial.phase === 'committed' &&
+        !!active?.node.children?.length &&
+        Math.hypot(press.x - active.pos.x, press.y - active.pos.y) <= CONTINUE_HIT_RADIUS;
+
+      if (canContinue && active) {
+        dial.onPointerDown(e, stage, active.pos, 'continue');
+        return;
+      }
+
+      // Default: a press anywhere re-presents level 1 from the idle centre.
+      dial.onPointerDown(e, stage, idleAnchor, 'fresh');
     },
     [dial, idleAnchor],
   );
@@ -363,12 +473,8 @@ export function RadialDial({
     setFocusedOptionIndex(null);
   }, [dial.phase, dial.path.length]);
 
-  // Idle menu hints — the level-1 options shown faintly around the centred
-  // root ONLY at idle. They preview "here's the top of the menu". During a
-  // gesture the real OptionBubble fan takes over; after a commit you see the
-  // result (planet trail + readout), and the next press re-opens this menu
-  // fresh from the root. Showing these only at idle (not committed) is what
-  // stops stale option circles from accumulating between selections.
+  // Idle choice geometry. At rest this feeds quiet ticks only; the full option
+  // labels bloom after press-hold so the primary lesson is "hold to open".
   const persistentOptions = useMemo(() => {
     if (dial.phase !== 'idle') return null;
     const children = tree.children;
@@ -844,11 +950,7 @@ export function RadialDial({
         {dial.phase === 'idle' && stageSize.w > 0 && tree.children?.[0] && (
           <FirstRunHint
             rootPos={idleAnchor}
-            targetPos={{
-              // Hint points toward the 12-o'clock option (first child).
-              x: idleAnchor.x,
-              y: idleAnchor.y - fanRadius * 0.7,
-            }}
+            targetPos={persistentOptions?.[0]?.pos ?? idleAnchor}
             theme={theme}
             reduceMotion={reduceMotion}
           />
@@ -870,16 +972,27 @@ export function RadialDial({
           />
         )}
 
-        {/* Persistent options — ALWAYS visible when not drawing. Faintly
-            present at rest (35% baseline), brighten with cursor proximity,
-            click any to commit directly. The drag gesture remains as a
-            bonus — both interaction modes coexist.
-            NOTE: deliberately NOT wrapped in a parallax (transform) layer —
-            an ancestor transform establishes a backdrop-root and would kill
-            these glass panes' frost. Their depth comes from the planet layer
-            drifting behind them instead. */}
+        {/* Latent slots — quiet marks that imply hidden choices without showing
+            the menu. The real fan blooms only under press-hold. */}
         <AnimatePresence>
           {persistentOptions &&
+            persistentOptions.map((c, i) => (
+              <LatentChoiceTick
+                key={`latent-${c.node.id}`}
+                anchor={idleAnchor}
+                pos={c.pos}
+                index={i}
+                theme={theme}
+                reduceMotion={reduceMotion}
+              />
+            ))}
+        </AnimatePresence>
+
+        {/* Keyboard fallback: arrow-key focus can still surface the idle fan,
+            but pointer users see the cleaner hold-first surface. */}
+        <AnimatePresence>
+          {focusedOptionIndex !== null &&
+            persistentOptions &&
             persistentOptions.map((c, i) => (
               <IdleGhost
                 key={`ghost-${c.node.id}`}
@@ -887,10 +1000,10 @@ export function RadialDial({
                 label={c.node.label}
                 icon={c.node.icon}
                 index={i}
-                proximity={Math.max(0.5, idleHoverProximity)}
+                proximity={focusedOptionIndex === i ? 1 : 0.18}
                 theme={theme}
                 onSelect={() => dial.selectChild(c.node, idleAnchor)}
-                breathing={dial.phase === 'idle'}
+                breathing={focusedOptionIndex === i}
                 reduceMotion={reduceMotion}
                 focused={focusedOptionIndex === i}
               />
@@ -939,6 +1052,16 @@ export function RadialDial({
             reduceMotion={reduceMotion}
           />
         )}
+
+        {dial.phase === 'committed' &&
+          dial.activeEntry?.node.children?.length &&
+          stageSize.w > 0 && (
+            <ContinuationHint
+              pos={dial.activeEntry.pos}
+              stageSize={stageSize}
+              theme={theme}
+            />
+          )}
 
         {/* Anticipatory previews — multiple options' children fade in behind
             them as the cursor approaches, scaled by proximity. Reveals where

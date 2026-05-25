@@ -18,7 +18,7 @@ import type { InkPoint, RadialDialTheme, Vec } from './types';
  *   IdleRoot       → wax-seal-style root at rest, breathes + greets first visit
  *   ActiveBubble   → current "you are here" with approach-strength morphing
  *   OptionBubble   → fan options during drawing, with magnetic pull + dots
- *   IdleGhost      → always-visible clickable option (idle + committed phases)
+ *   IdleGhost      → keyboard fallback option surfaced from the idle geometry
  *   SubMenuGhost   → preview of homed option's children (Houdini hotbox feel)
  *   CursorHalo     → soft accent dot that follows pointer while drawing
  *   ChildCountDots → perimeter dots on options indicating branch count
@@ -366,7 +366,7 @@ export function ActiveBubble({
 
 // =============================================================================
 // IdleRoot — the wax-seal at rest. Breathes with a soft halo, greets first
-// pointer entry with a stronger pulse. Static "tap or drag" caption below.
+// pointer entry with a stronger pulse. The caption teaches the primary hold.
 // =============================================================================
 export function IdleRoot({
   pos,
@@ -474,7 +474,18 @@ export function IdleRoot({
           transition: `opacity 240ms cubic-bezier(${SMOOTH_OUT.join(',')}), transform 240ms cubic-bezier(${SMOOTH_OUT.join(',')})`,
         }}
       >
-        tap or drag
+        <span style={{ display: 'block' }}>click + hold</span>
+        <span
+          style={{
+            display: 'block',
+            marginTop: 4,
+            fontSize: 9,
+            letterSpacing: '0.12em',
+            color: mix(theme.ink, 34),
+          }}
+        >
+          slide outward
+        </span>
       </div>
     </>
   );

@@ -655,13 +655,15 @@ function ThemeSwitcher({
       {ALL_THEMES.map((t: RadialDialTheme) => {
         const active = t.name === theme.name;
         return (
-          <button
+          <motion.button
             key={t.name}
             type="button"
             role="radio"
             aria-checked={active}
             onClick={() => onChange(t)}
             aria-label={`Switch to ${t.name} theme`}
+            whileTap={{ scale: 0.94 }}
+            transition={{ duration: 0.1 }}
             style={{
               position: 'relative',
               padding: '4px 10px',
@@ -670,7 +672,6 @@ function ThemeSwitcher({
               color: active ? theme.accent : mix(theme.ink, 58),
               border: 'none',
               cursor: 'pointer',
-              transition: 'color 220ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
           >
             {/* Sliding indicator — shared layoutId means Framer animates it
@@ -688,8 +689,10 @@ function ThemeSwitcher({
                 transition={{ type: 'spring', stiffness: 420, damping: 34 }}
               />
             )}
-            <span style={{ position: 'relative', zIndex: 1 }}>{t.name}</span>
-          </button>
+            <span style={{ position: 'relative', zIndex: 1, transition: 'color 220ms cubic-bezier(0.22,1,0.36,1)' }}>
+              {t.name}
+            </span>
+          </motion.button>
         );
       })}
     </div>

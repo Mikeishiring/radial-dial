@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { m } from 'framer-motion';
 import { SETTLED_DIAMETER, SMOOTH_OUT } from './geometry';
 import { mix, mixTwo } from './themes';
 import { MAX_LEAN, orbitParams, vicinity } from './planets-physics';
@@ -221,12 +222,15 @@ function PlanetCore({
   const isLight = theme.mode === 'light';
   const interactive = !!onClick;
   return (
-    <button
+    <m.button
       type="button"
       onClick={onClick}
       disabled={!interactive}
       aria-label={interactive ? `Jump back to ${label}` : label}
       title={interactive ? 'Click to return to this orbit' : undefined}
+      // Press feedback — a quick dip so the planet feels physical to click.
+      whileTap={interactive ? { scale: 0.92 } : undefined}
+      transition={{ duration: 0.1 }}
       style={{
         position: 'absolute',
         left: -size / 2,
@@ -309,6 +313,6 @@ function PlanetCore({
           ·
         </span>
       )}
-    </button>
+    </m.button>
   );
 }
