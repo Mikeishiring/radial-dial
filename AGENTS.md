@@ -5,6 +5,8 @@ vanity metrics, or theatre work.
 
 This repository is the canonical standalone home for `@mikeishiring/radial-dial`.
 Do not move the project back into a host app unless the user explicitly asks.
+See `docs/PROJECT_BOUNDARIES.md` before mixing this work with Sorting Hat,
+Shape onboarding, Web3 Jobs, or other host-product work.
 
 ## Product Direction
 
@@ -22,6 +24,8 @@ Do not move the project back into a host app unless the user explicitly asks.
 
 - Keep edits scoped to the library, example, docs, or project setup needed for
   the ask.
+- Keep Sorting Hat/ranking and onboarding product work in their own repositories;
+  use only mock fixtures here when those domains are needed to test the dial.
 - Preserve user edits in the working tree. If local changes already exist, read
   them before modifying the same files.
 - Run `npm run verify` before considering a change ready when package files or
