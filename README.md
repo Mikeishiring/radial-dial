@@ -151,7 +151,18 @@ npm install
 npm run example      # vite dev server at :5173 with the demo page
 npm run typecheck    # tsc --noEmit
 npm run build        # outputs dist/ with ESM + CJS + .d.ts
+npm run verify       # typecheck + build, used by CI
 ```
+
+## Project
+
+The standalone project lives at
+[github.com/Mikeishiring/radial-dial](https://github.com/Mikeishiring/radial-dial).
+
+- [Roadmap](./docs/ROADMAP.md) — expansion path from extraction to durable package.
+- [Contributing](./CONTRIBUTING.md) — local workflow, PR expectations, API bias.
+- [Water UI/UX charter](https://github.com/Mikeishiring/radial-dial/issues/1) —
+  active GitHub planning issue.
 
 ## Status & roadmap
 

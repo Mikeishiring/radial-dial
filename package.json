@@ -29,6 +29,8 @@
     "build": "tsc --noEmit && vite build && node scripts/copy-css.mjs",
     "build:types": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run build",
+    "prepack": "npm run build",
     "example": "vite --config example/vite.config.ts",
     "lint": "echo \"(no linter configured yet)\""
   },

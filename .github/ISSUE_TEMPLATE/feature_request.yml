@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a product or API improvement.
+title: "[Feature] "
+labels: []
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: What real product workflow needs this?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-shape
+    attributes:
+      label: Proposed Shape
+      description: Describe the API, behavior, or example change.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What can be done today with the current API?
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Public API
+        - Gesture behavior
+        - Example app only
+        - Documentation only
+        - Unsure
+    validations:
+      required: true

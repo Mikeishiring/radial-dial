@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Water UI/UX charter
+    url: https://github.com/Mikeishiring/radial-dial/issues/1
+    about: Read the active product charter before proposing feel-related work.

@@ -1,0 +1,37 @@
+name: Bug report
+description: Report broken behavior in the dial, package, or example app.
+title: "[Bug] "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What broke, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Steps, sandbox, repo branch, or screen recording.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Gesture engine
+        - Motion or feel
+        - Accessibility
+        - Mobile or touch
+        - Package/build
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, React version, package version, and device input.
