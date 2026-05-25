@@ -11,6 +11,7 @@ import {
 } from '@mikeishiring/radial-dial';
 import type {
   DialFlowMode,
+  DialGestureCommand,
   DialNode,
   DialPathPayload,
   RadialDialTheme,
@@ -166,9 +167,17 @@ export function RadialDialPage() {
   const [flowEvent, setFlowEvent] = useState<FlowEvent>('clear');
   // The last-applied payload — shown in a toast that auto-dismisses.
   const [lastApplied, setLastApplied] = useState<DialPathPayload | null>(null);
+  const [lastGesture, setLastGesture] = useState<DialGestureCommand | null>(null);
   // When the user drills all the way to a leaf (a node with no children),
   // we open a styled results preview. Null when not at a leaf.
   const [leafPath, setLeafPath] = useState<DialNode[] | null>(null);
+  const cycleFlowMode = (direction: 1 | -1) => {
+    setFlowMode(prev => {
+      const current = FLOW_MODES.findIndex(mode => mode.id === prev);
+      const next = (current + direction + FLOW_MODES.length) % FLOW_MODES.length;
+      return FLOW_MODES[next].id;
+    });
+  };
 
   return (
     <div
@@ -184,7 +193,7 @@ export function RadialDialPage() {
         tree={TREE}
         theme={theme}
         title="preference lab · v2"
-        hint="hover near a choice, then commit."
+        hint="draw, preview, commit."
         countLabel="matches"
         total={TOTAL_MATCHES}
         flowMode={flowMode}
@@ -217,6 +226,19 @@ export function RadialDialPage() {
             setLastApplied(prev => (prev === payload ? null : prev));
           }, 5000);
         }}
+        onGestureCommand={(command: DialGestureCommand) => {
+          setLastGesture(command);
+          window.setTimeout(() => {
+            setLastGesture(prev => (prev === command ? null : prev));
+          }, 1600);
+          if (command === 'reset') {
+            setFlowEvent('clear');
+            setLastApplied(null);
+            setLeafPath(null);
+          } else {
+            cycleFlowMode(command === 'next-flow' ? 1 : -1);
+          }
+        }}
         applyLabel="APPLY"
         toolbar={
           <DemoToolbar
@@ -238,6 +260,7 @@ export function RadialDialPage() {
         flowMode={flowMode}
         currentPath={currentPath}
         lastApplied={lastApplied}
+        lastGesture={lastGesture}
         flowEvent={flowEvent}
       />
 
@@ -363,12 +386,14 @@ function FlowMapPanel({
   flowMode,
   currentPath,
   lastApplied,
+  lastGesture,
   flowEvent,
 }: {
   theme: RadialDialTheme;
   flowMode: DialFlowMode;
   currentPath: DialNode[];
   lastApplied: DialPathPayload | null;
+  lastGesture: DialGestureCommand | null;
   flowEvent: FlowEvent;
 }) {
   const isLight = theme.mode === 'light';
@@ -388,6 +413,13 @@ function FlowMapPanel({
     apply: 'Applied',
     clear: 'Idle',
   }[flowEvent];
+  const gestureText = lastGesture === 'reset'
+    ? 'Circle reset'
+    : lastGesture === 'next-flow'
+      ? 'Slash next'
+      : lastGesture === 'previous-flow'
+        ? 'Slash previous'
+        : 'Circle reset · slash layout';
 
   return (
     <motion.aside
@@ -508,6 +540,29 @@ function FlowMapPanel({
         >
           {activePath.length ? activePath.join(' › ') : `${FLOW_MODES.find(f => f.id === flowMode)?.cue ?? 'ready'}`}
         </div>
+      </div>
+
+      <div
+        style={{
+          minHeight: 34,
+          padding: '7px 10px',
+          borderRadius: 8,
+          background: lastGesture ? mix(theme.accent, 10) : mix(theme.ink, isLight ? 3 : 7, 'transparent'),
+          border: `1px solid ${lastGesture ? mix(theme.accent, 28) : mix(theme.ink, isLight ? 8 : 14)}`,
+          marginBottom: 12,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          fontFamily: theme.mono,
+          fontSize: 9,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: lastGesture ? theme.accent : mix(theme.ink, isLight ? 42 : 54),
+        }}
+      >
+        <span>Draw controls</span>
+        <span>{gestureText}</span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

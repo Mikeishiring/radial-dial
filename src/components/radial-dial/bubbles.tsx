@@ -368,7 +368,7 @@ export function ActiveBubble({
 
 // =============================================================================
 // IdleRoot — glass lens at rest. Breathes with a soft halo, greets first
-// pointer entry with a stronger pulse. Static "tap or drag" caption below.
+// pointer entry with a stronger pulse. Empty-paper strokes become commands.
 // =============================================================================
 export function IdleRoot({
   pos,
@@ -391,6 +391,7 @@ export function IdleRoot({
   const size = ACTIVE_DIAMETER;
   const ringSize = size * 1.9;
   const glass = glassSurface(theme, { alpha: isLight ? 52 : 34, blur: 18 });
+  const approach = Math.max(0, Math.min(1, hintFade));
   const greetingTransition = !hasGreeted
     ? { duration: 2.6, repeat: Infinity, ease: SMOOTH_OUT }
     : { duration: 0.7, ease: OVERSHOOT };
@@ -407,8 +408,16 @@ export function IdleRoot({
           border: `1px solid ${mix(theme.accent, isLight ? 18 : 26)}`,
           boxShadow: `inset 0 0 34px ${mix(theme.accent, isLight ? 6 : 12)}`,
         }}
-        animate={reduceMotion ? {} : { scale: [1, 1.08, 1], opacity: [0.42, 0.18, 0.42], rotate: [0, 8, 0] }}
-        transition={{ duration: 3.4, repeat: Infinity, ease: SMOOTH_OUT }}
+        animate={
+          reduceMotion
+            ? {}
+            : {
+                scale: [1 + approach * 0.04, 0.94 + approach * 0.02, 1 + approach * 0.04],
+                opacity: [0.36 + approach * 0.26, 0.16 + approach * 0.16, 0.36 + approach * 0.26],
+                rotate: [0, -10 - approach * 20, 0],
+              }
+        }
+        transition={{ duration: 3.4 - approach * 1.2, repeat: Infinity, ease: SMOOTH_OUT }}
       />
       <m.div
         className="pointer-events-none absolute"
@@ -422,8 +431,43 @@ export function IdleRoot({
           maskImage: 'radial-gradient(circle, transparent 58%, black 60%, black 65%, transparent 67%)',
           WebkitMaskImage: 'radial-gradient(circle, transparent 58%, black 60%, black 65%, transparent 67%)',
         }}
-        animate={reduceMotion ? {} : { rotate: [0, 360] }}
-        transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
+        animate={
+          reduceMotion
+            ? {}
+            : {
+                rotate: [0, 360],
+                scale: [1.05, 0.9 + approach * 0.02, 1.05],
+                opacity: 0.28 + approach * 0.38,
+              }
+        }
+        transition={{
+          rotate: { duration: 18 - approach * 8, repeat: Infinity, ease: 'linear' },
+          scale: { duration: 2.9 - approach * 0.8, repeat: Infinity, ease: SMOOTH_OUT },
+          opacity: { duration: 0.22, ease: SMOOTH_OUT },
+        }}
+      />
+      <m.div
+        className="pointer-events-none absolute"
+        style={{
+          left: pos.x - ringSize * 0.58,
+          top: pos.y - ringSize * 0.58,
+          width: ringSize * 1.16,
+          height: ringSize * 1.16,
+          borderRadius: '50%',
+          border: `1px solid ${mix(theme.accent, isLight ? 16 : 24)}`,
+          maskImage: 'radial-gradient(circle, transparent 52%, black 55%, black 59%, transparent 62%)',
+          WebkitMaskImage: 'radial-gradient(circle, transparent 52%, black 55%, black 59%, transparent 62%)',
+        }}
+        animate={
+          reduceMotion
+            ? {}
+            : {
+                scale: approach > 0.02 ? [1.18, 0.76, 1.18] : 1,
+                opacity: approach > 0.02 ? [0, approach * 0.44, 0] : 0,
+                rotate: approach > 0.02 ? [0, -42, -84] : 0,
+              }
+        }
+        transition={{ duration: 2.4, repeat: Infinity, ease: SMOOTH_OUT }}
       />
       {/* Warm halo that breathes — gentle accent glow opacity pulse. */}
       <m.div
@@ -500,7 +544,7 @@ export function IdleRoot({
           transition: `opacity 240ms cubic-bezier(${SMOOTH_OUT.join(',')}), transform 240ms cubic-bezier(${SMOOTH_OUT.join(',')})`,
         }}
       >
-        tap or drag
+        draw or choose
       </div>
     </>
   );

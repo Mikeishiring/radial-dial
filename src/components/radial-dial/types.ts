@@ -60,6 +60,9 @@ export type RadialDialTheme = {
 /** How child options are arranged as the user walks the hierarchy. */
 export type DialFlowMode = 'radial' | 'right-flow' | 'left-flow' | 'down-flow';
 
+/** Shape gestures drawn on empty paper outside the dial's live target zones. */
+export type DialGestureCommand = 'reset' | 'next-flow' | 'previous-flow';
+
 /** Where the dial is in its lifecycle. */
 export type DialPhase = 'idle' | 'drawing' | 'committed';
 

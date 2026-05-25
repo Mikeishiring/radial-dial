@@ -287,18 +287,19 @@ export function useRadialDial({
       if (bestIdx < 0 || bestDelta >= angularTolerance) return;
 
       const chosen = liveChildren[bestIdx];
-      const newEntry = { node: chosen.node, pos: p };
+      const chosenPoint = { ...chosen.pos, t: performance.now(), v: 0 };
+      const newEntry = { node: chosen.node, pos: chosen.pos };
       const frozen: FrozenStroke = {
         id: `${chosen.node.id}-${performance.now()}`,
-        points: [...liveStrokeRef.current, { ...p, t: performance.now(), v: 0 }],
+        points: [...liveStrokeRef.current, chosenPoint],
         frozenAt: performance.now(),
       };
       const newPath = [...livePath, newEntry];
       pathRef.current = newPath;
       setPath(newPath);
       setFrozenStrokes(prev => [...prev, frozen]);
-      liveStrokeRef.current = [{ ...p, t: performance.now(), v: 0 }];
-      rawHistoryRef.current = [p];
+      liveStrokeRef.current = [chosenPoint];
+      rawHistoryRef.current = [chosen.pos];
       armedRef.current = false;
       onChange?.({ nodes: newPath.slice(1).map(e => e.node) });
       bumpRender();

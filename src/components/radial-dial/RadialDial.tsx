@@ -18,6 +18,7 @@ import { ApplyButton, PathLine, ResetButton } from './chrome';
 import {
   ACTIVE_TRIM_RADIUS,
   COMMIT_DISTANCE,
+  EXPO_OUT,
   FAN_RADIUS,
   MAX_OPTION_PULL,
   OPTION_DIAMETER,
@@ -124,6 +125,25 @@ function fitPositionsToStage(
   else if (maxY > stageSize.h - margin) dy = stageSize.h - margin - maxY;
   return positions.map(p => ({ x: p.x + dx, y: p.y + dy }));
 }
+
+function pointFromPointer(e: React.PointerEvent, stage: HTMLElement): Vec {
+  const rect = stage.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function isNearPoint(point: Vec, target: Vec, radius: number) {
+  return Math.hypot(point.x - target.x, point.y - target.y) <= radius;
+}
+
+function polylinePoints(points: Vec[]) {
+  return points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+}
+
+function gestureLabel(command: DialGestureCommand) {
+  if (command === 'reset') return 'reset';
+  if (command === 'next-flow') return 'next layout';
+  return 'previous layout';
+}
 import {
   ActiveBubble,
   CursorHalo,
@@ -146,9 +166,11 @@ import {
   useRadialDial,
   usePrefersReducedMotion,
 } from './useRadialDial';
+import { classifyGestureCommand } from './gesture-commands';
 import type {
   DialNode,
   DialFlowMode,
+  DialGestureCommand,
   DialPathPayload,
   RadialDialTheme,
   Vec,
@@ -198,6 +220,8 @@ export type RadialDialProps = {
   onApply?: (payload: DialPathPayload) => void;
   /** Text on the Apply CTA. Default: "Apply" + count suffix. */
   applyLabel?: string;
+  /** Fired when the user draws a recognized command on empty paper. */
+  onGestureCommand?: (command: DialGestureCommand) => void;
 };
 
 export function RadialDial({
@@ -214,6 +238,7 @@ export function RadialDial({
   onComplete,
   onApply,
   applyLabel = 'Apply',
+  onGestureCommand,
 }: RadialDialProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -277,6 +302,14 @@ export function RadialDial({
     onChange,
     onComplete,
   });
+  const persistentOptionsRef = useRef<Array<{ node: DialNode; pos: Vec }> | null>(null);
+  const commandRef = useRef<{ pointerId: number; points: Vec[] } | null>(null);
+  const [commandStroke, setCommandStroke] = useState<Vec[]>([]);
+  const [commandFlash, setCommandFlash] = useState<{
+    id: number;
+    command: DialGestureCommand;
+    pos: Vec;
+  } | null>(null);
 
   // ===========================================================================
   // IDLE ATMOSPHERE STATE — small things that happen when nothing else is.
@@ -357,10 +390,32 @@ export function RadialDial({
   // Pointer event adapters — pass the stage element through.
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      // Anchor every press at the dial centre so the menu always opens where
-      // the idle hints sit — a press anywhere re-presents the level-1 menu
-      // from the root, fresh. (Issue: "restart from the start every time.")
-      if (stageRef.current) dial.onPointerDown(e, stageRef.current, idleAnchor);
+      const stage = stageRef.current;
+      if (!stage) return;
+      const point = pointFromPointer(e, stage);
+      const activePoint = dial.activeEntry?.pos ?? idleAnchor;
+      const targetZones = [
+        activePoint,
+        ...(persistentOptionsRef.current ?? []).map(option => option.pos),
+      ];
+      const nearDialTarget = targetZones.some(target =>
+        isNearPoint(point, target, OPTION_DIAMETER * 0.9),
+      );
+
+      if (nearDialTarget) {
+        dial.onPointerDown(e, stage, dial.phase === 'idle' ? idleAnchor : activePoint);
+        return;
+      }
+
+      commandRef.current = { pointerId: e.pointerId, points: [point] };
+      setCommandStroke([point]);
+      setCommandFlash(null);
+      try {
+        stage.setPointerCapture(e.pointerId);
+      } catch {
+        /* noop */
+      }
+      e.preventDefault();
     },
     [dial, idleAnchor],
   );
@@ -371,6 +426,16 @@ export function RadialDial({
     (e: React.PointerEvent) => {
       const stage = stageRef.current;
       if (!stage) return;
+      const command = commandRef.current;
+      if (command && command.pointerId === e.pointerId) {
+        const point = pointFromPointer(e, stage);
+        const last = command.points[command.points.length - 1];
+        if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= 3) {
+          command.points = [...command.points.slice(-180), point];
+          setCommandStroke(command.points);
+        }
+        return;
+      }
       // Always pass through to the engine; it self-gates on phase.
       dial.onPointerMove(e, stage);
       // For resting hover, capture pointer relative to stage when not drawing.
@@ -390,9 +455,30 @@ export function RadialDial({
   }, [idleHover]);
   const onPointerUp = useCallback(
     (e: React.PointerEvent) => {
-      if (stageRef.current) dial.onPointerUp(e, stageRef.current);
+      const stage = stageRef.current;
+      if (!stage) return;
+      const command = commandRef.current;
+      if (command && command.pointerId === e.pointerId) {
+        const point = pointFromPointer(e, stage);
+        const points = [...command.points, point];
+        const recognized = classifyGestureCommand(points);
+        commandRef.current = null;
+        setCommandStroke([]);
+        try {
+          if (stage.hasPointerCapture(e.pointerId)) stage.releasePointerCapture(e.pointerId);
+        } catch {
+          /* noop */
+        }
+        if (recognized) {
+          if (recognized === 'reset') dial.reset();
+          setCommandFlash({ id: Date.now(), command: recognized, pos: point });
+          onGestureCommand?.(recognized);
+        }
+        return;
+      }
+      dial.onPointerUp(e, stage);
     },
-    [dial],
+    [dial, onGestureCommand],
   );
   // Live count for the counter readout — declared here (early) because
   // applyCurrent depends on it. Also consumed by PathLine / Apply CTA below.
@@ -452,6 +538,14 @@ export function RadialDial({
     stageSize,
     restingOptionPadding,
   ]);
+  useEffect(() => {
+    persistentOptionsRef.current = persistentOptions;
+  }, [persistentOptions]);
+  useEffect(() => {
+    if (!commandFlash) return;
+    const timeout = window.setTimeout(() => setCommandFlash(null), 900);
+    return () => window.clearTimeout(timeout);
+  }, [commandFlash]);
   // Keyboard handler — Enter applies (committed) OR commits focused option.
   // ArrowLeft/Right cycle the focused option clockwise/counter-clockwise.
   // ArrowUp focuses the option closest to 12 o'clock.
@@ -657,11 +751,22 @@ export function RadialDial({
               ? Math.PI / 2
               : Math.atan2(dy, dx);
       const count = c.node.children.length;
-      const previewRadius = OPTION_DIAMETER * (0.72 + strength * 0.42);
-      const spread = Math.min(Math.PI * 0.92, Math.max(0, (count - 1) * Math.PI * 0.3));
-      const start = count === 1 ? baseAngle : baseAngle - spread / 2;
-      const step = count === 1 ? 0 : spread / (count - 1);
+      const previewRadius = OPTION_DIAMETER * (0.82 + strength * 0.5);
+      const previewSpacing = Math.min(OPTION_DIAMETER * 0.9, 84);
       const rawPositions = c.node.children.map((_, i) => {
+        const offset = (i - (count - 1) / 2) * previewSpacing;
+        if (flowMode === 'right-flow') {
+          return { x: c.pos.x + previewRadius, y: c.pos.y + offset };
+        }
+        if (flowMode === 'left-flow') {
+          return { x: c.pos.x - previewRadius, y: c.pos.y + offset };
+        }
+        if (flowMode === 'down-flow') {
+          return { x: c.pos.x + offset, y: c.pos.y + previewRadius };
+        }
+        const spread = Math.min(Math.PI * 0.92, Math.max(0, (count - 1) * Math.PI * 0.3));
+        const start = count === 1 ? baseAngle : baseAngle - spread / 2;
+        const step = count === 1 ? 0 : spread / (count - 1);
         const a = start + step * i;
         return {
           x: c.pos.x + Math.cos(a) * previewRadius,
@@ -925,6 +1030,18 @@ export function RadialDial({
               theme={theme}
             />
           )}
+          {commandStroke.length >= 2 && (
+            <polyline
+              points={polylinePoints(commandStroke)}
+              fill="none"
+              stroke={mix(theme.accent, isLight ? 62 : 72)}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="1 7"
+              opacity={0.82}
+            />
+          )}
           {/* Single traveling pulse along the whole concatenated path —
               directional energy flowing toward the user's current position. */}
           {fullConcatenatedPath && <TravelingPulse d={fullConcatenatedPath} theme={theme} />}
@@ -940,6 +1057,39 @@ export function RadialDial({
             />
           )}
         </svg>
+
+        <AnimatePresence>
+          {commandFlash && (
+            <m.div
+              key={commandFlash.id}
+              className="pointer-events-none absolute"
+              style={{
+                left: commandFlash.pos.x,
+                top: commandFlash.pos.y,
+                zIndex: 28,
+                transform: 'translate(-50%, -50%)',
+                padding: '7px 10px',
+                borderRadius: 999,
+                background: `color-mix(in srgb, ${theme.paper} ${isLight ? 78 : 56}%, transparent)`,
+                border: `1px solid ${mix(theme.accent, 28)}`,
+                boxShadow: `0 10px 26px ${mix(theme.ink, isLight ? 10 : 26)}`,
+                backdropFilter: 'blur(14px) saturate(135%)',
+                WebkitBackdropFilter: 'blur(14px) saturate(135%)',
+                color: theme.accent,
+                fontFamily: theme.mono,
+                fontSize: 9,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+              }}
+              initial={{ opacity: 0, scale: 0.82, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: -6 }}
+              transition={{ duration: 0.24, ease: EXPO_OUT }}
+            >
+              {gestureLabel(commandFlash.command)}
+            </m.div>
+          )}
+        </AnimatePresence>
 
         {/* Idle root */}
         {dial.phase === 'idle' && stageSize.w > 0 && (
