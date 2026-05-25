@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   RadialDial,
@@ -32,95 +32,97 @@ import type {
 
 const TREE: DialNode = {
   id: 'root',
-  label: 'Find',
+  label: 'Tune',
   children: [
     {
-      id: 'role',
-      label: 'Role',
-      icon: <RoleIcon />,
+      id: 'outcome',
+      label: 'Outcome',
+      icon: <OutcomeIcon />,
       share: 1,
       children: [
         {
-          id: 'engineering',
-          label: 'Engineering',
-          share: 0.46,
+          id: 'ship-product',
+          label: 'Ship product',
+          share: 0.34,
           children: [
-            { id: 'frontend', label: 'Frontend', share: 0.32 },
-            { id: 'backend', label: 'Backend', share: 0.34 },
-            { id: 'smart-contract', label: 'Smart contract', share: 0.20 },
-            { id: 'full-stack', label: 'Full-stack', share: 0.14 },
+            { id: 'radial-v2', label: 'Radial V2', share: 0.28 },
+            { id: 'web3-jobs', label: 'Web3 Jobs', share: 0.26 },
+            { id: 'plugin-lab', label: 'Plugin lab', share: 0.18 },
+            { id: 'prototype', label: 'Prototype', share: 0.22 },
           ],
         },
         {
-          id: 'design',
-          label: 'Design',
-          share: 0.12,
-          children: [
-            { id: 'product-designer', label: 'Product' },
-            { id: 'brand', label: 'Brand' },
-          ],
-        },
-        {
-          id: 'product',
-          label: 'Product',
-          share: 0.18,
-          children: [
-            { id: 'pm', label: 'PM' },
-            { id: 'growth', label: 'Growth' },
-          ],
-        },
-        {
-          id: 'ops',
-          label: 'Ops',
+          id: 'find-role',
+          label: 'Find role',
           share: 0.24,
           children: [
-            { id: 'recruiting', label: 'Recruiting' },
-            { id: 'finance', label: 'Finance' },
-            { id: 'people', label: 'People' },
+            { id: 'founder-mode', label: 'Founder mode' },
+            { id: 'principal-ic', label: 'Principal IC' },
+            { id: 'operator', label: 'Operator' },
+          ],
+        },
+        {
+          id: 'learn-craft',
+          label: 'Learn craft',
+          share: 0.20,
+          children: [
+            { id: 'motion', label: 'Motion' },
+            { id: 'ai-tools', label: 'AI tools' },
+            { id: 'data-viz', label: 'Data viz' },
+          ],
+        },
+        {
+          id: 'decide-fast',
+          label: 'Decide fast',
+          share: 0.22,
+          children: [
+            { id: 'compare', label: 'Compare' },
+            { id: 'triage', label: 'Triage' },
+            { id: 'rank', label: 'Rank' },
           ],
         },
       ],
     },
     {
-      id: 'seniority',
-      label: 'Seniority',
-      icon: <SeniorityIcon />,
+      id: 'taste',
+      label: 'Taste',
+      icon: <TasteIcon />,
       share: 1,
       children: [
-        { id: 'junior', label: 'Junior', share: 0.18 },
-        { id: 'mid', label: 'Mid', share: 0.34 },
-        { id: 'senior', label: 'Senior', share: 0.30 },
-        { id: 'staff', label: 'Staff+', share: 0.18 },
+        { id: 'ios-glass', label: 'iOS glass', share: 0.30 },
+        { id: 'editorial', label: 'Editorial', share: 0.22 },
+        { id: 'dense-tools', label: 'Dense tools', share: 0.26 },
+        { id: 'calm-motion', label: 'Calm motion', share: 0.22 },
       ],
     },
     {
-      id: 'salary',
-      label: 'Salary',
-      icon: <SalaryIcon />,
+      id: 'constraint',
+      label: 'Constraints',
+      icon: <ConstraintIcon />,
       share: 1,
       children: [
-        { id: 'sub-100', label: '< $100k', share: 0.14 },
-        { id: '100-150', label: '$100–150k', share: 0.32 },
-        { id: '150-200', label: '$150–200k', share: 0.30 },
-        { id: '200-plus', label: '$200k+', share: 0.24 },
+        { id: 'low-meetings', label: 'Low meetings', share: 0.22 },
+        { id: 'remote-first', label: 'Remote first', share: 0.24 },
+        { id: 'short-sprint', label: 'Short sprint', share: 0.26 },
+        { id: 'high-leverage', label: 'High leverage', share: 0.28 },
       ],
     },
     {
-      id: 'stage',
-      label: 'Stage',
-      icon: <StageIcon />,
+      id: 'depth',
+      label: 'Depth',
+      icon: <DepthIcon />,
       share: 1,
       children: [
-        { id: 'seed', label: 'Seed', share: 0.30 },
-        { id: 'series-a', label: 'Series A', share: 0.28 },
-        { id: 'series-b-plus', label: 'Series B+', share: 0.26 },
-        { id: 'public', label: 'Public', share: 0.16 },
+        { id: 'one-shot', label: 'One shot', share: 0.24 },
+        { id: 'polish-pass', label: 'Polish pass', share: 0.30 },
+        { id: 'production', label: 'Production', share: 0.28 },
+        { id: 'research', label: 'Research', share: 0.18 },
       ],
     },
   ],
 };
 
-const TOTAL_JOBS = 28_400;
+const TOTAL_MATCHES = 1_840;
 
 const FLOW_MODES: Array<{
   id: DialFlowMode;
@@ -134,17 +136,17 @@ const FLOW_MODES: Array<{
 ];
 
 const SCENARIOS = [
-  ['Role', 'Engineering', 'Frontend'],
-  ['Salary', '$150–200k'],
-  ['Stage', 'Series A'],
-  ['Seniority', 'Staff+'],
+  ['Outcome', 'Ship product', 'Radial V2'],
+  ['Taste', 'iOS glass'],
+  ['Constraints', 'Low meetings'],
+  ['Depth', 'Polish pass'],
 ];
 
 type FlowEvent = 'start' | 'choose' | 'refine' | 'change' | 'backtrack' | 'apply' | 'clear';
 
 // Compute the running count by multiplying each node's share down the path.
 function countForPath(nodes: DialNode[]): number {
-  return nodes.reduce((n, node) => n * (node.share ?? 1), TOTAL_JOBS);
+  return nodes.reduce((n, node) => n * (node.share ?? 1), TOTAL_MATCHES);
 }
 
 function flowEventFor(prev: DialNode[], next: DialNode[]): FlowEvent {
@@ -181,10 +183,10 @@ export function RadialDialPage() {
       <RadialDial
         tree={TREE}
         theme={theme}
-        title="radial · dial"
-        hint="press, draw a line, release."
-        countLabel="jobs"
-        total={TOTAL_JOBS}
+        title="preference lab · v2"
+        hint="hover near a choice, then commit."
+        countLabel="matches"
+        total={TOTAL_MATCHES}
         flowMode={flowMode}
         onChange={({ nodes }: DialPathPayload) => {
           // Fired on every commit / undo as you drill through levels. When
@@ -373,8 +375,8 @@ function FlowMapPanel({
   const activePath = currentPath.map(n => n.label);
   const stageLabels = [
     { id: 'choose', label: 'Choose' },
-    { id: 'refine', label: 'Refine' },
-    { id: 'backtrack', label: 'Backtrack' },
+    { id: 'refine', label: 'Preview' },
+    { id: 'backtrack', label: 'Change' },
     { id: 'apply', label: 'Apply' },
   ];
   const eventLabel = {
@@ -422,7 +424,7 @@ function FlowMapPanel({
           color: mix(theme.ink, isLight ? 46 : 58),
         }}
       >
-        <span>Flow map</span>
+        <span>V2 test</span>
         <span style={{ color: theme.accent }}>{eventLabel}</span>
       </div>
 
@@ -582,9 +584,9 @@ function IntroCard({ theme }: { theme: RadialDialTheme }) {
           lineHeight: 1.45,
         }}
       >
-        A hierarchical marking-menu dial. Click any option, or press
-        the centre and drag toward one. Keep drawing to commit the
-        next level. Escape to back out.
+        Tune a mock preference set. Drift near a choice to preview what
+        sits behind it, commit when it feels right, then back out and
+        change direction without starting over.
       </div>
     </div>
   );
@@ -808,14 +810,14 @@ function PreviewPanel({
             marginBottom: 22,
           }}
         >
-          {count.toLocaleString('en-US')} matching roles
+          {count.toLocaleString('en-US')} preference matches
         </div>
 
         {/* Result cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {results.map((r, i) => (
             <motion.div
-              key={r.company + r.title}
+              key={r.title + r.time}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{
@@ -859,7 +861,7 @@ function PreviewPanel({
                     fontFeatureSettings: '"tnum" 1',
                   }}
                 >
-                  {r.salary}
+                  {r.fit}
                 </span>
               </div>
               <div
@@ -870,7 +872,7 @@ function PreviewPanel({
                   color: mix(theme.ink, isLight ? 55 : 65),
                 }}
               >
-                {r.company} · {r.location}
+                {r.detail} · {r.time}
               </div>
             </motion.div>
           ))}
@@ -899,22 +901,22 @@ function PreviewPanel({
 // illustrative — a real consumer would query their own data here.
 function mockResults(path: DialNode[]): Array<{
   title: string;
-  company: string;
-  location: string;
-  salary: string;
+  detail: string;
+  fit: string;
+  time: string;
 }> {
-  const leaf = path[path.length - 1]?.label ?? 'Role';
-  const companies = ['Uniswap Labs', 'Phantom', 'Farcaster', 'Base', 'Helius'];
-  const locations = ['Remote', 'New York', 'Remote · EU', 'San Francisco'];
-  const salaries = ['$160k', '$185k', '$210k', '$140k', '$175k'];
-  const titlePrefix = leaf.includes('$') || /Seed|Series|Public/.test(leaf)
-    ? 'Engineer'
-    : leaf;
-  return Array.from({ length: 4 }, (_, i) => ({
-    title: `${titlePrefix} ${['', 'II', 'Senior', 'Lead'][i] ?? ''}`.trim(),
-    company: companies[i % companies.length],
-    location: locations[i % locations.length],
-    salary: salaries[i % salaries.length],
+  const leaf = path[path.length - 1]?.label ?? 'Preference';
+  const briefs = [
+    ['Radial V2 glass spacing pass', 'Bigger lanes, richer previews, calmer labels', '92%', '2h'],
+    ['Preference dial for work picks', 'Turns vague taste into a concrete filter path', '88%', '45m'],
+    ['Low-meeting product sprint', 'One high-leverage pass with a sharp review surface', '84%', '1d'],
+    ['Motion audit checklist', 'Finds where previews, pulls, and backtracking fail', '79%', '35m'],
+  ];
+  return briefs.map(([title, detail, fit, time], i) => ({
+    title: i === 0 ? `${leaf} · ${title}` : title,
+    detail,
+    fit,
+    time,
   }));
 }
 
@@ -1032,20 +1034,13 @@ function ThemeSwitcher({
 }
 
 // =============================================================================
-// Hand-inked category icons.
-// Each: 28×28 rendered, 1.6px stroke, ROUND caps and joins so the line ends
-// look like brush strokes rather than guillotined edges. Slight asymmetry
-// is deliberate — these should feel drawn, not generated.
-//
-//  Role       → a chair from the side. "Where the role sits."
-//  Seniority  → ascending steps. Walking up the ranks.
-//  Salary     → calligraphic $ with extended stem. Editorial flourish.
-//  Stage      → a small spire. The company building, growing tall.
+// Soft iOS-style category glyphs.
+// Rounded, balanced, and abstract enough to survive at small sizes inside glass.
 // =============================================================================
 const ICON_SIZE = 28;
-const ICON_STROKE = 1.6;
+const ICON_STROKE = 1.85;
 
-function RoleIcon() {
+function GlyphSvg({ children }: { children: ReactNode }) {
   return (
     <svg
       width={ICON_SIZE}
@@ -1058,73 +1053,54 @@ function RoleIcon() {
       strokeLinejoin="round"
       style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
     >
-      {/* chair back */}
-      <path d="M7.5 5 L 7.2 14" />
-      {/* seat */}
-      <path d="M5.5 14 L 17.8 14" />
-      {/* rear leg */}
-      <path d="M7.5 14 L 7 21" />
-      {/* front leg */}
-      <path d="M16 14 L 17 21" />
+      {children}
     </svg>
   );
 }
 
-function SeniorityIcon() {
+function OutcomeIcon() {
   return (
-    <svg
-      width={ICON_SIZE}
-      height={ICON_SIZE}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={ICON_STROKE}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
-    >
-      <path d="M3.5 19.5 L 8 19.5 L 8 14.5 L 13 14.5 L 13 9.5 L 18 9.5 L 18 4.5 L 21 4.5" />
-    </svg>
+    <GlyphSvg>
+      <circle cx="12" cy="12" r="6.5" />
+      <path d="M12 5.5 L12 2.8" />
+      <path d="M12 21.2 L12 18.5" />
+      <path d="M5.5 12 L2.8 12" />
+      <path d="M21.2 12 L18.5 12" />
+      <circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" />
+    </GlyphSvg>
   );
 }
 
-function SalaryIcon() {
+function TasteIcon() {
   return (
-    <svg
-      width={ICON_SIZE}
-      height={ICON_SIZE}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={ICON_STROKE}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
-    >
-      <path d="M12 3 L 12 21" />
-      <path d="M16.5 7 Q 12 5 8.5 7 Q 5.2 9 8.4 11.4 Q 11.5 13.4 15 14.6 Q 18 16 15 19 Q 12 20.8 7.8 18.8" />
-    </svg>
+    <GlyphSvg>
+      <rect x="5" y="5" width="14" height="14" rx="4.5" />
+      <path d="M8.4 9.4 C10.4 7.6 13.5 7.4 16 8.8" />
+      <path d="M8 15.2 C10.6 17 14 16.7 16.6 14.6" />
+      <path d="M16.4 5.8 L18.2 4" />
+    </GlyphSvg>
   );
 }
 
-function StageIcon() {
+function ConstraintIcon() {
   return (
-    <svg
-      width={ICON_SIZE}
-      height={ICON_SIZE}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={ICON_STROKE}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
-    >
-      <path d="M8 21 L 8 9.5" />
-      <path d="M16 21 L 16 9.5" />
-      <path d="M7 21 L 17 21" />
-      <path d="M6.5 9.5 L 12 4 L 17.5 9.5" />
-      <circle cx="12" cy="14.5" r="0.9" fill="currentColor" stroke="none" />
-    </svg>
+    <GlyphSvg>
+      <path d="M5 7.2 H19" />
+      <path d="M5 12 H19" />
+      <path d="M5 16.8 H19" />
+      <circle cx="9" cy="7.2" r="1.8" fill="currentColor" stroke="none" />
+      <circle cx="15.4" cy="12" r="1.8" fill="currentColor" stroke="none" />
+      <circle cx="11.8" cy="16.8" r="1.8" fill="currentColor" stroke="none" />
+    </GlyphSvg>
+  );
+}
+
+function DepthIcon() {
+  return (
+    <GlyphSvg>
+      <path d="M12 4.2 L19 8.2 L12 12.2 L5 8.2 Z" />
+      <path d="M18.2 12 L12 15.6 L5.8 12" />
+      <path d="M18.2 15.8 L12 19.4 L5.8 15.8" />
+    </GlyphSvg>
   );
 }

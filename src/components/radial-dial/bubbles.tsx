@@ -121,8 +121,8 @@ export function OptionBubble({
   // Frosted glass — the fan options float over the ink + planets like panes.
   // Higher fill alpha + a legible ink ring (below) so options read clearly;
   // the earlier translucent glass left them near-invisible on light themes.
-  const glass = glassSurface(theme, { alpha: isLight ? 64 : 42, blur: 10 });
-  const homedFill = `color-mix(in srgb, ${theme.paper} ${isLight ? 72 : 56}%, transparent)`;
+  const glass = glassSurface(theme, { alpha: isLight ? 50 : 34, blur: 18 });
+  const homedFill = `linear-gradient(145deg, color-mix(in srgb, ${theme.paper} ${isLight ? 78 : 58}%, transparent), color-mix(in srgb, ${theme.accent} ${isLight ? 12 : 20}%, transparent))`;
   return (
     <m.div
       // ARIA: even though this fan option isn't a button (the gesture
@@ -151,12 +151,14 @@ export function OptionBubble({
         boxShadow: homed
           ? [
               glass.glassShadow,
+              `inset 0 1px 0 rgba(255,255,255,${isLight ? 0.72 : 0.18})`,
               `inset 0 0 0 ${homedBorder} ${mix(theme.accent, 45 + homedStrength * 50)}`,
               `0 6px 18px ${mix(theme.accent, 6 + homedStrength * 22)}`,
               `0 0 ${20 + homedStrength * 20}px ${mix(theme.accent, homedStrength * 16)}`,
             ].join(', ')
           : [
               glass.glassShadow,
+              `inset 0 1px 0 rgba(255,255,255,${isLight ? 0.65 : 0.12})`,
               `inset 0 0 0 ${idleBorder} ${mix(theme.ink, isLight ? 24 : 32)}`,
             ].join(', '),
         color: homed ? mixTwo(theme.accent, 65 + homedStrength * 35, theme.ink, 10) : mix(theme.ink, 80),
@@ -211,13 +213,13 @@ export function OptionBubble({
       )}
       <span
         style={{
-          fontSize: 16,
-          fontWeight: homed ? 500 : 450,
+          fontSize: 15,
+          fontWeight: homed ? 560 : 500,
           fontFamily: 'Inter, system-ui, sans-serif',
-          letterSpacing: '0.005em',
-          padding: '0 6px',
+          letterSpacing: 0,
+          padding: '0 10px',
           textAlign: 'center',
-          lineHeight: 1.15,
+          lineHeight: 1.12,
           transition: `color 180ms cubic-bezier(${SMOOTH_OUT.join(',')})`,
         }}
       >
@@ -365,7 +367,7 @@ export function ActiveBubble({
 }
 
 // =============================================================================
-// IdleRoot — the wax-seal at rest. Breathes with a soft halo, greets first
+// IdleRoot — glass lens at rest. Breathes with a soft halo, greets first
 // pointer entry with a stronger pulse. Static "tap or drag" caption below.
 // =============================================================================
 export function IdleRoot({
@@ -387,7 +389,8 @@ export function IdleRoot({
 }) {
   const isLight = theme.mode === 'light';
   const size = ACTIVE_DIAMETER;
-  const ringSize = size * 1.7;
+  const ringSize = size * 1.9;
+  const glass = glassSurface(theme, { alpha: isLight ? 52 : 34, blur: 18 });
   const greetingTransition = !hasGreeted
     ? { duration: 2.6, repeat: Infinity, ease: SMOOTH_OUT }
     : { duration: 0.7, ease: OVERSHOOT };
@@ -401,10 +404,26 @@ export function IdleRoot({
           width: ringSize,
           height: ringSize,
           borderRadius: '50%',
-          border: `1px solid ${mix(theme.accent, 18)}`,
+          border: `1px solid ${mix(theme.accent, isLight ? 18 : 26)}`,
+          boxShadow: `inset 0 0 34px ${mix(theme.accent, isLight ? 6 : 12)}`,
         }}
-        animate={reduceMotion ? {} : { scale: [1, 1.06, 1], opacity: [0.55, 0.25, 0.55] }}
-        transition={{ duration: 2.6, repeat: Infinity, ease: SMOOTH_OUT }}
+        animate={reduceMotion ? {} : { scale: [1, 1.08, 1], opacity: [0.42, 0.18, 0.42], rotate: [0, 8, 0] }}
+        transition={{ duration: 3.4, repeat: Infinity, ease: SMOOTH_OUT }}
+      />
+      <m.div
+        className="pointer-events-none absolute"
+        style={{
+          left: pos.x - ringSize * 0.66,
+          top: pos.y - ringSize * 0.66,
+          width: ringSize * 1.32,
+          height: ringSize * 1.32,
+          borderRadius: '50%',
+          background: `conic-gradient(from 90deg, transparent 0deg, ${mix(theme.accent, 16)} 68deg, transparent 132deg, ${mix(theme.ink, isLight ? 7 : 11)} 214deg, transparent 292deg)`,
+          maskImage: 'radial-gradient(circle, transparent 58%, black 60%, black 65%, transparent 67%)',
+          WebkitMaskImage: 'radial-gradient(circle, transparent 58%, black 60%, black 65%, transparent 67%)',
+        }}
+        animate={reduceMotion ? {} : { rotate: [0, 360] }}
+        transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
       />
       {/* Warm halo that breathes — gentle accent glow opacity pulse. */}
       <m.div
@@ -429,12 +448,19 @@ export function IdleRoot({
           width: size,
           height: size,
           borderRadius: '50%',
-          background: mixTwo(theme.paper, isLight ? 70 : 88, theme.ink, isLight ? 4 : 6),
+          background: [
+            `radial-gradient(circle at 34% 24%, rgba(255,255,255,${isLight ? 0.9 : 0.22}) 0%, transparent 30%)`,
+            `linear-gradient(145deg, color-mix(in srgb, ${theme.paper} ${isLight ? 66 : 42}%, transparent), color-mix(in srgb, ${theme.accent} ${isLight ? 10 : 20}%, transparent))`,
+            glass.background,
+          ].join(', '),
+          backdropFilter: glass.backdropFilter,
+          WebkitBackdropFilter: glass.WebkitBackdropFilter,
           boxShadow: [
-            `inset 0 0 0 1px ${mix(theme.ink, isLight ? 80 : 60)}`,
-            `0 1px 0 ${mix(theme.ink, isLight ? 6 : 0)}`,
-            `0 6px 14px ${mix(theme.ink, isLight ? 10 : 30)}`,
-            `0 0 28px ${mix(theme.accent, 12)}`,
+            `inset 0 1px 0 rgba(255,255,255,${isLight ? 0.82 : 0.2})`,
+            `inset 0 -14px 24px ${mix(theme.ink, isLight ? 5 : 16)}`,
+            `inset 0 0 0 1px ${mix(theme.ink, isLight ? 16 : 22)}`,
+            `0 10px 26px ${mix(theme.ink, isLight ? 11 : 32)}`,
+            `0 0 34px ${mix(theme.accent, 12)}`,
           ].join(', '),
         }}
         animate={
@@ -448,11 +474,11 @@ export function IdleRoot({
       >
         <span
           style={{
-            fontSize: 12,
+            fontSize: 13,
             color: theme.ink,
-            letterSpacing: '0.005em',
-            fontFamily: theme.serif,
-            fontStyle: 'italic',
+            letterSpacing: 0,
+            fontFamily: 'Inter, system-ui, sans-serif',
+            fontWeight: 620,
           }}
         >
           {label}
@@ -464,8 +490,8 @@ export function IdleRoot({
           left: pos.x - 100,
           top: pos.y + size * 0.95,
           width: 200,
-          fontSize: 11,
-          letterSpacing: '0.18em',
+          fontSize: 10,
+          letterSpacing: '0.14em',
           textTransform: 'uppercase',
           color: mix(theme.ink, 42),
           fontFamily: theme.mono,
@@ -530,7 +556,7 @@ export function IdleGhost({
   // Slightly higher fill alpha than before so the pane reads as a real
   // option, not a ghost outline — the earlier glass values vanished on the
   // light cream background.
-  const glass = glassSurface(theme, { alpha: isLight ? 62 : 40, blur: 10 });
+  const glass = glassSurface(theme, { alpha: isLight ? 48 : 34, blur: 18 });
   const boxShadow = {
     // A legible ink ring is the key fix: the glass white rim alone is
     // invisible on light themes, so options "disappeared". This gives every
@@ -565,7 +591,10 @@ export function IdleGhost({
         height: OPTION_DIAMETER,
         borderRadius: '50%',
         // Frosted glass — the ink trails + planets behind shimmer through.
-        background: glass.background,
+        background: [
+          `radial-gradient(circle at 32% 22%, rgba(255,255,255,${isLight ? 0.82 : 0.16}) 0%, transparent 32%)`,
+          glass.background,
+        ].join(', '),
         backdropFilter: glass.backdropFilter,
         WebkitBackdropFilter: glass.WebkitBackdropFilter,
         border: focused ? `1px solid ${mix(theme.accent, 45)}` : glass.border,
@@ -638,17 +667,17 @@ export function IdleGhost({
         }
       >
         {icon && (
-          <span style={{ marginBottom: 3, opacity: 0.8 }}>{icon}</span>
+          <span style={{ marginBottom: 5, opacity: 0.92 }}>{icon}</span>
         )}
         <span
           style={{
-            fontSize: 11,
-            fontWeight: 450,
+            fontSize: 12,
+            fontWeight: 560,
             fontFamily: 'Inter, system-ui, sans-serif',
-            letterSpacing: '0.005em',
-            padding: '0 4px',
+            letterSpacing: 0,
+            padding: '0 8px',
             textAlign: 'center',
-            lineHeight: 1.05,
+            lineHeight: 1.08,
           }}
         >
           {label}
@@ -665,23 +694,25 @@ export function IdleGhost({
 // =============================================================================
 export function SubMenuGhost({
   pos,
+  origin,
   label,
   index,
   strength,
   theme,
 }: {
   pos: Vec;
+  origin: Vec;
   label: string;
   index: number;
   /** Homed strength of the parent option — drives preview opacity. */
   strength: number;
   theme: RadialDialTheme;
 }) {
-  const SIZE = OPTION_DIAMETER * 0.7;
+  const SIZE = OPTION_DIAMETER * 0.74;
   const isLight = theme.mode === 'light';
-  const opacity = Math.min(0.5, strength * 0.65);
+  const opacity = Math.min(0.78, strength * 0.95);
   // Lighter, blurrier glass than the real options — reads as a "ghost" pane.
-  const glass = glassSurface(theme, { alpha: isLight ? 40 : 26, blur: 8 });
+  const glass = glassSurface(theme, { alpha: isLight ? 46 : 30, blur: 16 });
   return (
     <m.div
       className="pointer-events-none absolute flex items-center justify-center"
@@ -691,17 +722,30 @@ export function SubMenuGhost({
         width: SIZE,
         height: SIZE,
         borderRadius: '50%',
-        background: glass.background,
+        background: [
+          `radial-gradient(circle at 34% 22%, rgba(255,255,255,${isLight ? 0.72 : 0.18}) 0%, transparent 34%)`,
+          glass.background,
+        ].join(', '),
         backdropFilter: glass.backdropFilter,
         WebkitBackdropFilter: glass.WebkitBackdropFilter,
         border: glass.border,
-        boxShadow: `${glass.glassShadow}, inset 0 0 0 1px ${mix(theme.accent, 18 + strength * 18)}`,
-        color: mix(theme.accent, 60),
+        boxShadow: `${glass.glassShadow}, inset 0 1px 0 rgba(255,255,255,${isLight ? 0.62 : 0.14}), inset 0 0 0 1px ${mix(theme.accent, 18 + strength * 26)}, 0 6px 18px ${mix(theme.accent, strength * 12)}`,
+        color: mixTwo(theme.accent, 52 + strength * 28, theme.ink, 24),
         zIndex: 3,
       }}
-      initial={{ opacity: 0, scale: 0.6 }}
-      animate={{ opacity, scale: 0.92 + strength * 0.08 }}
-      exit={{ opacity: 0, scale: 0.55 }}
+      initial={{
+        opacity: 0,
+        scale: 0.32,
+        x: origin.x - pos.x,
+        y: origin.y - pos.y,
+      }}
+      animate={{ opacity, scale: 0.86 + strength * 0.16, x: 0, y: 0 }}
+      exit={{
+        opacity: 0,
+        scale: 0.44,
+        x: (origin.x - pos.x) * 0.55,
+        y: (origin.y - pos.y) * 0.55,
+      }}
       transition={{
         delay: index * 0.04,
         type: 'spring',
@@ -712,11 +756,11 @@ export function SubMenuGhost({
     >
       <span
         style={{
-          fontSize: 9,
-          fontWeight: 450,
+          fontSize: 10,
+          fontWeight: 560,
           fontFamily: 'Inter, system-ui, sans-serif',
-          letterSpacing: '0.005em',
-          padding: '0 4px',
+          letterSpacing: 0,
+          padding: '0 7px',
           textAlign: 'center',
           lineHeight: 1.05,
         }}

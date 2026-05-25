@@ -60,7 +60,7 @@ export const SETTLED_DIAMETER = 64;
  * Note: RadialDial.tsx scales this by a `stageScale` factor on small
  * viewports — see computeStageScale() there. Issue #291.
  */
-export const FAN_RADIUS = 196;
+export const FAN_RADIUS = 224;
 
 /**
  * How far the cursor must travel from active before the closest child commits.
@@ -72,7 +72,7 @@ export const FAN_RADIUS = 196;
  * The ratio COMMIT_DISTANCE / FAN_RADIUS ≈ 0.8 is the magnetic-grab window;
  * adjusting it changes how confident vs hesitant the dial feels.
  */
-export const COMMIT_DISTANCE = 158;
+export const COMMIT_DISTANCE = 174;
 
 // =============================================================================
 // INK GEOMETRY

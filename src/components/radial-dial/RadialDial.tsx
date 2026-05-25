@@ -373,8 +373,8 @@ export function RadialDial({
       if (!stage) return;
       // Always pass through to the engine; it self-gates on phase.
       dial.onPointerMove(e, stage);
-      // For idle hover, capture pointer relative to stage when not drawing.
-      if (dial.phase === 'idle') {
+      // For resting hover, capture pointer relative to stage when not drawing.
+      if (dial.phase === 'idle' || dial.phase === 'committed') {
         const rect = stage.getBoundingClientRect();
         setIdleHover({ x: e.clientX - rect.left, y: e.clientY - rect.top });
         // First-visit recognition — fires once per session.
@@ -614,48 +614,90 @@ export function RadialDial({
     return lateV - earlyV; // positive = speeding up
   }, [dial.liveStroke]);
 
-  // Anticipatory previews — for EVERY option that has children, compute the
-  // user's proximity to it. Options the cursor is approaching reveal their
-  // children behind them at proximity-scaled opacity. Multiple options can
-  // preview simultaneously (the user is "considering" several). The homed
-  // option additionally benefits from a homed-strength + acceleration boost.
-  //
-  // Replaces the single-preview model: now the system shows where each
-  // nearby option WOULD lead, smoothly scaled. Reveal happens during
-  // approach (cursor-distance based), not just on lock-in.
+  // Anticipatory previews — when the pointer nears a child with its own
+  // children, reveal a tight secondary cluster that blooms from behind that
+  // option. This is intentionally closer than the real next commit radius:
+  // it previews information without asking the user to travel there yet.
   const proximityPreviews = useMemo(() => {
-    if (dial.phase !== 'drawing' || !dial.pointer || !dial.activeEntry) return [];
-    if (recentVelocity > 0.7) return []; // hide entirely when flicking fast
+    const previewPointer = dial.phase === 'drawing' ? dial.pointer : idleHover;
+    const activePos = dial.phase === 'drawing' || dial.phase === 'committed'
+      ? dial.activeEntry?.pos
+      : idleAnchor;
+    const previewChildren = dial.phase === 'drawing' ? clampedChildren : persistentOptions ?? [];
+    if (!previewPointer || !activePos) return [];
+    if (dial.phase === 'drawing' && recentVelocity > 1.15) return []; // hide only on decisive expert flicks
     const trajectoryBoost = Math.max(-0.25, Math.min(0.25, -recentAccel * 0.5));
-    const previews: Array<{ id: string; strength: number; children: Array<{ node: DialNode; pos: Vec }> }> = [];
-    for (const c of clampedChildren) {
+    const previews: Array<{
+      id: string;
+      origin: Vec;
+      strength: number;
+      children: Array<{ node: DialNode; pos: Vec }>;
+    }> = [];
+    for (const c of previewChildren) {
       if (!c.node.children?.length) continue;
-      const dist = Math.hypot(dial.pointer.x - c.pos.x, dial.pointer.y - c.pos.y);
-      // Proximity ramps from 0 at 110px out to 1 at the bubble's edge.
-      const REVEAL_RANGE = 110;
+      const dist = Math.hypot(previewPointer.x - c.pos.x, previewPointer.y - c.pos.y);
+      // Proximity ramps from 0 at 170px out to 1 at the bubble's edge.
+      const REVEAL_RANGE = 170;
       const edgeDist = Math.max(0, dist - OPTION_DIAMETER / 2);
       const proximity = Math.max(0, 1 - edgeDist / REVEAL_RANGE);
-      if (proximity < 0.15) continue;
+      if (proximity < 0.08) continue;
       // Combined strength: proximity (always present) + homed boost (only
       // for the option the user is actively committing toward).
-      const isHomed = dial.homed?.id === c.node.id;
-      const homedBoost = isHomed ? dial.homed!.strength * 0.4 : 0;
-      const strength = Math.max(0, Math.min(1, proximity * 0.7 + homedBoost + (isHomed ? trajectoryBoost : 0)));
-      const positions = placeChildren(
-        c.pos,
-        dial.activeEntry.pos,
-        c.node.children.length,
-        fanRadius,
-        flowMode,
+      const isHomed = dial.phase === 'drawing' && dial.homed?.id === c.node.id;
+      const homedBoost = isHomed ? dial.homed!.strength * 0.55 : 0;
+      const strength = Math.max(0, Math.min(1, proximity * 0.82 + homedBoost + (isHomed ? trajectoryBoost : 0)));
+      const dx = c.pos.x - activePos.x;
+      const dy = c.pos.y - activePos.y;
+      const baseAngle =
+        flowMode === 'right-flow'
+          ? 0
+          : flowMode === 'left-flow'
+            ? Math.PI
+            : flowMode === 'down-flow'
+              ? Math.PI / 2
+              : Math.atan2(dy, dx);
+      const count = c.node.children.length;
+      const previewRadius = OPTION_DIAMETER * (0.72 + strength * 0.42);
+      const spread = Math.min(Math.PI * 0.92, Math.max(0, (count - 1) * Math.PI * 0.3));
+      const start = count === 1 ? baseAngle : baseAngle - spread / 2;
+      const step = count === 1 ? 0 : spread / (count - 1);
+      const rawPositions = c.node.children.map((_, i) => {
+        const a = start + step * i;
+        return {
+          x: c.pos.x + Math.cos(a) * previewRadius,
+          y: c.pos.y + Math.sin(a) * previewRadius,
+        };
+      });
+      const positions = fitPositionsToStage(
+        rawPositions,
+        stageSize,
+        edgePadding + OPTION_DIAMETER * 0.54,
       );
       previews.push({
         id: c.node.id,
+        origin: c.pos,
         strength,
         children: c.node.children.map((node, i) => ({ node, pos: positions[i] })),
       });
     }
-    return previews;
-  }, [dial.phase, dial.pointer, dial.activeEntry, clampedChildren, dial.homed, recentVelocity, recentAccel, fanRadius, flowMode]);
+    return previews
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, dial.phase === 'drawing' ? 2 : 1);
+  }, [
+    dial.phase,
+    dial.pointer,
+    dial.activeEntry,
+    idleHover,
+    idleAnchor,
+    clampedChildren,
+    persistentOptions,
+    dial.homed,
+    recentVelocity,
+    recentAccel,
+    stageSize,
+    edgePadding,
+    flowMode,
+  ]);
 
   // Counter projection — when homed on an option whose share narrows count,
   // compute what the count WOULD become on commit. Shown inline next to
@@ -972,7 +1014,7 @@ export function RadialDial({
                     c.pos,
                   )
                 }
-                acceptPointer={dial.phase === 'committed'}
+                acceptPointer={dial.phase !== 'drawing'}
                 breathing={dial.phase === 'idle'}
                 reduceMotion={reduceMotion}
                 focused={focusedOptionIndex === i}
@@ -1032,6 +1074,7 @@ export function RadialDial({
               <SubMenuGhost
                 key={`prev-${preview.id}-${c.node.id}`}
                 pos={c.pos}
+                origin={preview.origin}
                 label={c.node.label}
                 index={i}
                 strength={preview.strength}

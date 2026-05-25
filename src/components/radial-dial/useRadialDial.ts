@@ -44,11 +44,11 @@ type Options = {
 };
 
 const DEFAULTS = {
-  commitDistance: 158,
+  commitDistance: 174,
   settleRadius: 108,
   undoRadius: 44,
   angularTolerance: Math.PI / 4.5,
-  fanRadius: 196,
+  fanRadius: 224,
   flowMode: 'radial' as DialFlowMode,
 };
 
@@ -645,19 +645,24 @@ function placeChildrenInFlow(
   radius: number,
   flowMode: Exclude<DialFlowMode, 'radial'>,
 ): Vec[] {
-  const baseAngle =
-    flowMode === 'right-flow'
-      ? 0
-      : flowMode === 'left-flow'
-        ? Math.PI
-        : Math.PI / 2;
-  const spread = Math.min(Math.PI * 0.55, Math.max(0, (count - 1) * Math.PI * 0.18));
-  const start = count === 1 ? baseAngle : baseAngle - spread / 2;
-  const step = count === 1 ? 0 : spread / (count - 1);
-  return Array.from({ length: count }, (_, i) => {
-    const a = start + i * step;
-    return { x: parent.x + Math.cos(a) * radius, y: parent.y + Math.sin(a) * radius };
-  });
+  const spacing = Math.min(radius * 0.68, 152);
+  const offset = (i: number) => (i - (count - 1) / 2) * spacing;
+  if (flowMode === 'right-flow') {
+    return Array.from({ length: count }, (_, i) => ({
+      x: parent.x + radius,
+      y: parent.y + offset(i),
+    }));
+  }
+  if (flowMode === 'left-flow') {
+    return Array.from({ length: count }, (_, i) => ({
+      x: parent.x - radius,
+      y: parent.y + offset(i),
+    }));
+  }
+  return Array.from({ length: count }, (_, i) => ({
+    x: parent.x + offset(i),
+    y: parent.y + radius,
+  }));
 }
 
 /** Smallest non-negative angle between two angles (in radians). */
