@@ -4,6 +4,8 @@ import { EXPO_OUT, OVERSHOOT, SMOOTH_OUT } from './geometry';
 import { mix } from './themes';
 import type { DialNode, RadialDialTheme } from './types';
 
+type ActionPlacement = 'path' | 'bottom';
+
 /**
  * Chrome — the textual readouts and persistent controls around the dial:
  *   - PathLine: the prose breadcrumb + counter ("≈ 9,088 jobs · salary › $100–150k")
@@ -319,6 +321,7 @@ export function ApplyButton({
   label,
   count,
   formatCount,
+  placement = 'path',
   onClick,
 }: {
   theme: RadialDialTheme;
@@ -326,6 +329,7 @@ export function ApplyButton({
   /** Optional inline count, e.g. "Apply 47 matches". */
   count?: number | null;
   formatCount?: (n: number) => string;
+  placement?: ActionPlacement;
   onClick: () => void;
 }) {
   const countStr =
@@ -335,8 +339,13 @@ export function ApplyButton({
   return (
     <m.div
       className="absolute z-20"
-      // Positioned just under PathLine (top: 56) — give it air to breathe.
-      style={{ top: 96, left: 'calc(50% + 8px)' }}
+      // Path placement sits under PathLine; bottom placement avoids crowding
+      // the path on narrow/touch viewports.
+      style={
+        placement === 'bottom'
+          ? { bottom: 28, left: 'calc(50% + 8px)' }
+          : { top: 96, left: 'calc(50% + 8px)' }
+      }
       initial={{ opacity: 0, y: -8, scale: 0.92 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -4, scale: 0.96 }}
@@ -407,16 +416,22 @@ export function ApplyButton({
 // =============================================================================
 export function BackButton({
   theme,
+  placement = 'path',
   onClick,
 }: {
   theme: RadialDialTheme;
+  placement?: ActionPlacement;
   onClick: () => void;
 }) {
   const isLight = theme.mode === 'light';
   return (
     <m.div
       className="absolute z-20"
-      style={{ top: 96, right: 'calc(50% + 8px)' }}
+      style={
+        placement === 'bottom'
+          ? { bottom: 28, right: 'calc(50% + 8px)' }
+          : { top: 96, right: 'calc(50% + 8px)' }
+      }
       initial={{ opacity: 0, y: -8, scale: 0.94 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -4, scale: 0.96 }}

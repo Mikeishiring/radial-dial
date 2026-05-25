@@ -68,8 +68,8 @@ export function App() {
       <RadialDial
         tree={tree}
         theme={PAPER_THEME}
-        total={28_400}
-        countLabel="jobs"
+        total={256}
+        countLabel="states"
         onComplete={(payload) => console.log('chose:', payload)}
       />
     </div>
@@ -103,11 +103,20 @@ type RadialDialProps = {
   title?: string;                // optional top-left label
   hint?: string;                 // italic serif hint
   formatCount?: (n: number) => string;
-  countLabel?: string;           // word after the count (e.g. "jobs")
+  countLabel?: string;           // word after the count (e.g. "items")
   total?: number;                // if provided, computes a narrowing count
+  fanRadius?: number;            // base children fan radius
+  commitDistance?: number;       // base outward commit distance
+  settleRadius?: number;         // hysteresis re-arm distance
+  undoRadius?: number;           // inward reverse-drag distance
+  angularTolerance?: number;     // child selection cone, radians
+  showBack?: boolean;            // visible one-step Back control
+  actionPlacement?: 'auto' | 'path' | 'bottom';
   toolbar?: React.ReactNode;     // slot for additional UI top-right
   onChange?: (payload: DialPathPayload) => void;
   onComplete?: (payload: DialPathPayload) => void;
+  onApply?: (payload: DialPathPayload) => void;
+  applyLabel?: string;
 };
 ```
 
@@ -115,6 +124,8 @@ type RadialDialProps = {
 
 - **Marking menu, not radial menu.** The path is the gesture. Drag traces an ink line you can see, undo (drag back), or re-route (commit, then redirect).
 - **Reversible by design.** The committed state exposes Back, Backspace, Escape, and breadcrumb/planet stepping so users can refine a path without restarting.
+- **Primitive-level knobs.** Consumers can tune fan radius, commit distance, hysteresis, undo radius, angular tolerance, Back visibility, and action placement without forking the renderer.
+- **Keyboard continuation.** Arrow keys choose at the root and at committed child levels; Enter commits or emits, Escape/Backspace step backward.
 - **Three sacred easings** — overshoot, smooth-out, expo-out — applied consistently, asymmetric timing (entrance slower than exit). The dial feels like one thing because it moves like one thing.
 - **Color via `color-mix()`** — one accent hex per theme generates all derivations (fills, hovers, glows, borders). No palette duplication.
 - **Live count projection.** When `total` is set and `share` is on the children, the readout shows what the count would be on commit.
@@ -167,6 +178,8 @@ npm run build        # outputs dist/ with ESM + CJS + .d.ts
 npm run build:demo   # outputs example/dist for the demo page
 npm run deploy:demo  # deploys the demo to Cloudflare Pages project radial-dial
 ```
+
+The demo is an interaction lab, not a product mock: it shows neutral sample trees, live payload JSON, event history, and count/depth readouts so the primitive can be evaluated without borrowing a host product domain.
 
 ## Status & roadmap
 

@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  RadialDial,
-  PAPER_THEME,
   ALL_THEMES,
-  mix,
-  glassSurface,
   EXPO_OUT,
-  SMOOTH_OUT,
+  PAPER_THEME,
+  RadialDial,
+  glassSurface,
+  mix,
 } from '@mikeishiring/radial-dial';
 import type {
   DialNode,
@@ -15,683 +15,637 @@ import type {
   RadialDialTheme,
 } from '@mikeishiring/radial-dial';
 
-// =============================================================================
-// Demo page — consumes the RadialDial template.
-//
-// Layout: full-bleed dial fills the viewport, with a thin chrome layer:
-//   - Top-left intro card (what is this?)
-//   - Top-right theme switcher (wired through the dial's toolbar slot)
-//   - Bottom-right footer with repo link
-//   - Centre-bottom "last applied" pill (appears for 5s after Apply)
-//
-// The page is intentionally minimal — the dial itself is the show. Framing
-// gives a first-time visitor enough scaffolding to know what to do, then
-// gets out of the way.
-// =============================================================================
+type SampleId = 'interface' | 'workflow' | 'material';
+type EventKind = 'change' | 'complete' | 'apply';
 
-const TREE: DialNode = {
-  id: 'root',
-  label: 'Find',
-  children: [
-    {
-      id: 'role',
-      label: 'Role',
-      icon: <RoleIcon />,
-      share: 1,
-      children: [
-        {
-          id: 'engineering',
-          label: 'Engineering',
-          share: 0.46,
-          children: [
-            { id: 'frontend', label: 'Frontend', share: 0.32 },
-            { id: 'backend', label: 'Backend', share: 0.34 },
-            { id: 'smart-contract', label: 'Smart contract', share: 0.20 },
-            { id: 'full-stack', label: 'Full-stack', share: 0.14 },
-          ],
-        },
-        {
-          id: 'design',
-          label: 'Design',
-          share: 0.12,
-          children: [
-            { id: 'product-designer', label: 'Product' },
-            { id: 'brand', label: 'Brand' },
-          ],
-        },
-        {
-          id: 'product',
-          label: 'Product',
-          share: 0.18,
-          children: [
-            { id: 'pm', label: 'PM' },
-            { id: 'growth', label: 'Growth' },
-          ],
-        },
-        {
-          id: 'ops',
-          label: 'Ops',
-          share: 0.24,
-          children: [
-            { id: 'recruiting', label: 'Recruiting' },
-            { id: 'finance', label: 'Finance' },
-            { id: 'people', label: 'People' },
-          ],
-        },
-      ],
-    },
-    {
-      id: 'seniority',
-      label: 'Seniority',
-      icon: <SeniorityIcon />,
-      share: 1,
-      children: [
-        { id: 'junior', label: 'Junior', share: 0.18 },
-        { id: 'mid', label: 'Mid', share: 0.34 },
-        { id: 'senior', label: 'Senior', share: 0.30 },
-        { id: 'staff', label: 'Staff+', share: 0.18 },
-      ],
-    },
-    {
-      id: 'salary',
-      label: 'Salary',
-      icon: <SalaryIcon />,
-      share: 1,
-      children: [
-        { id: 'sub-100', label: '< $100k', share: 0.14 },
-        { id: '100-150', label: '$100–150k', share: 0.32 },
-        { id: '150-200', label: '$150–200k', share: 0.30 },
-        { id: '200-plus', label: '$200k+', share: 0.24 },
-      ],
-    },
-    {
-      id: 'stage',
-      label: 'Stage',
-      icon: <StageIcon />,
-      share: 1,
-      children: [
-        { id: 'seed', label: 'Seed', share: 0.30 },
-        { id: 'series-a', label: 'Series A', share: 0.28 },
-        { id: 'series-b-plus', label: 'Series B+', share: 0.26 },
-        { id: 'public', label: 'Public', share: 0.16 },
-      ],
-    },
-  ],
+type SampleTree = {
+  id: SampleId;
+  name: string;
+  total: number;
+  countLabel: string;
+  tree: DialNode;
 };
 
-const TOTAL_JOBS = 28_400;
+type EventEntry = {
+  kind: EventKind;
+  label: string;
+  at: string;
+};
 
-// Compute the running count by multiplying each node's share down the path.
-function countForPath(nodes: DialNode[]): number {
-  return nodes.reduce((n, node) => n * (node.share ?? 1), TOTAL_JOBS);
+const SAMPLES: SampleTree[] = [
+  {
+    id: 'interface',
+    name: 'Interface',
+    total: 256,
+    countLabel: 'states',
+    tree: {
+      id: 'root',
+      label: 'Choose',
+      children: [
+        {
+          id: 'arrange',
+          label: 'Arrange',
+          icon: <GridIcon />,
+          share: 0.72,
+          children: [
+            { id: 'grid', label: 'Grid', share: 0.38 },
+            { id: 'stack', label: 'Stack', share: 0.24 },
+            { id: 'orbit', label: 'Orbit', share: 0.18 },
+            { id: 'cascade', label: 'Cascade', share: 0.20 },
+          ],
+        },
+        {
+          id: 'transform',
+          label: 'Transform',
+          icon: <TransformIcon />,
+          share: 0.64,
+          children: [
+            { id: 'scale', label: 'Scale', share: 0.30 },
+            { id: 'rotate', label: 'Rotate', share: 0.26 },
+            { id: 'mask', label: 'Mask', share: 0.22 },
+            { id: 'blend', label: 'Blend', share: 0.22 },
+          ],
+        },
+        {
+          id: 'inspect',
+          label: 'Inspect',
+          icon: <InspectIcon />,
+          share: 0.48,
+          children: [
+            { id: 'summary', label: 'Summary', share: 0.42 },
+            { id: 'compare', label: 'Compare', share: 0.28 },
+            { id: 'trace', label: 'Trace', share: 0.18 },
+            { id: 'detail', label: 'Detail', share: 0.12 },
+          ],
+        },
+        {
+          id: 'commit',
+          label: 'Commit',
+          icon: <CommitIcon />,
+          share: 0.56,
+          children: [
+            { id: 'apply', label: 'Apply', share: 0.44 },
+            { id: 'pin', label: 'Pin', share: 0.24 },
+            { id: 'copy', label: 'Copy', share: 0.18 },
+            { id: 'reset', label: 'Reset', share: 0.14 },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'workflow',
+    name: 'Workflow',
+    total: 96,
+    countLabel: 'routes',
+    tree: {
+      id: 'root',
+      label: 'Route',
+      children: [
+        {
+          id: 'triage',
+          label: 'Triage',
+          icon: <InspectIcon />,
+          share: 0.68,
+          children: [
+            { id: 'accept', label: 'Accept', share: 0.40 },
+            { id: 'hold', label: 'Hold', share: 0.24 },
+            { id: 'reject', label: 'Reject', share: 0.20 },
+            { id: 'review', label: 'Review', share: 0.16 },
+          ],
+        },
+        {
+          id: 'priority',
+          label: 'Priority',
+          icon: <StackIcon />,
+          share: 0.52,
+          children: [
+            { id: 'low', label: 'Low', share: 0.36 },
+            { id: 'normal', label: 'Normal', share: 0.34 },
+            { id: 'high', label: 'High', share: 0.22 },
+            { id: 'urgent', label: 'Urgent', share: 0.08 },
+          ],
+        },
+        {
+          id: 'owner',
+          label: 'Owner',
+          icon: <OrbitIcon />,
+          share: 0.74,
+          children: [
+            { id: 'self', label: 'Self', share: 0.46 },
+            { id: 'team', label: 'Team', share: 0.32 },
+            { id: 'system', label: 'System', share: 0.22 },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'material',
+    name: 'Material',
+    total: 144,
+    countLabel: 'variants',
+    tree: {
+      id: 'root',
+      label: 'Tune',
+      children: [
+        {
+          id: 'surface',
+          label: 'Surface',
+          icon: <GridIcon />,
+          share: 0.80,
+          children: [
+            { id: 'matte', label: 'Matte', share: 0.32 },
+            { id: 'glass', label: 'Glass', share: 0.26 },
+            { id: 'paper', label: 'Paper', share: 0.22 },
+            { id: 'metal', label: 'Metal', share: 0.20 },
+          ],
+        },
+        {
+          id: 'motion',
+          label: 'Motion',
+          icon: <TransformIcon />,
+          share: 0.58,
+          children: [
+            { id: 'snap', label: 'Snap', share: 0.30 },
+            { id: 'settle', label: 'Settle', share: 0.26 },
+            { id: 'trail', label: 'Trail', share: 0.24 },
+            { id: 'pulse', label: 'Pulse', share: 0.20 },
+          ],
+        },
+        {
+          id: 'density',
+          label: 'Density',
+          icon: <StackIcon />,
+          share: 0.62,
+          children: [
+            { id: 'quiet', label: 'Quiet', share: 0.42 },
+            { id: 'balanced', label: 'Balanced', share: 0.36 },
+            { id: 'dense', label: 'Dense', share: 0.22 },
+          ],
+        },
+        {
+          id: 'signal',
+          label: 'Signal',
+          icon: <CommitIcon />,
+          share: 0.50,
+          children: [
+            { id: 'count', label: 'Count', share: 0.36 },
+            { id: 'depth', label: 'Depth', share: 0.28 },
+            { id: 'state', label: 'State', share: 0.22 },
+            { id: 'payload', label: 'Payload', share: 0.14 },
+          ],
+        },
+      ],
+    },
+  },
+];
+
+function countForPath(nodes: DialNode[], total: number): number {
+  return nodes.reduce((n, node) => n * (node.share ?? 1), total);
+}
+
+function useCompactLayout() {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const update = () => setCompact(window.innerWidth < 780 || window.innerHeight < 620);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  return compact;
 }
 
 export function RadialDialPage() {
   const [theme, setTheme] = useState<RadialDialTheme>(PAPER_THEME);
-  // The last-applied payload — shown in a toast that auto-dismisses.
-  const [lastApplied, setLastApplied] = useState<DialPathPayload | null>(null);
-  // When the user drills all the way to a leaf (a node with no children),
-  // we open a styled results preview. Null when not at a leaf.
-  const [leafPath, setLeafPath] = useState<DialNode[] | null>(null);
+  const [sampleId, setSampleId] = useState<SampleId>('interface');
+  const [payload, setPayload] = useState<DialPathPayload>({ nodes: [] });
+  const [applied, setApplied] = useState<DialPathPayload | null>(null);
+  const [events, setEvents] = useState<EventEntry[]>([]);
+  const compact = useCompactLayout();
+
+  const sample = useMemo(
+    () => SAMPLES.find(item => item.id === sampleId) ?? SAMPLES[0],
+    [sampleId],
+  );
+
+  const pushEvent = (kind: EventKind, nextPayload: DialPathPayload) => {
+    const label = nextPayload.nodes.map(node => node.label).join(' > ') || 'root';
+    setEvents(prev => [
+      { kind, label, at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) },
+      ...prev,
+    ].slice(0, 4));
+  };
+
+  const handleSampleChange = (next: SampleId) => {
+    setSampleId(next);
+    setPayload({ nodes: [] });
+    setApplied(null);
+    setEvents([]);
+  };
 
   return (
     <div
       style={{
         width: '100vw',
-        height: '100vh',
+        height: '100dvh',
+        minHeight: 520,
         position: 'relative',
         overflow: 'hidden',
         background: theme.paper,
       }}
     >
       <RadialDial
-        tree={TREE}
+        key={sample.id}
+        tree={sample.tree}
         theme={theme}
-        title="radial · dial"
-        hint="press, draw a line, release."
-        countLabel="jobs"
-        total={TOTAL_JOBS}
-        onChange={({ nodes }: DialPathPayload) => {
-          // Fired on every commit / undo as you drill through levels. When
-          // the deepest node is a LEAF (no children), you've reached the end
-          // — open the styled preview. Otherwise keep it closed.
-          const last = nodes[nodes.length - 1];
-          const reachedLeaf = !!last && !last.children?.length;
-          setLeafPath(reachedLeaf ? nodes : null);
+        title="radial dial"
+        hint="gesture primitive for nested choices"
+        countLabel={sample.countLabel}
+        total={sample.total}
+        actionPlacement={compact ? 'path' : 'auto'}
+        applyLabel="Emit"
+        fanRadius={196}
+        commitDistance={158}
+        undoRadius={44}
+        onChange={next => {
+          setPayload(next);
+          setApplied(null);
+          pushEvent('change', next);
         }}
-        onComplete={({ nodes }: DialPathPayload) => {
-          if (typeof window !== 'undefined') {
-            // eslint-disable-next-line no-console
-            console.info(
-              '[RadialDial] complete:',
-              nodes.map((n: DialNode) => n.label).join(' › '),
-            );
-          }
+        onComplete={next => pushEvent('complete', next)}
+        onApply={next => {
+          setApplied(next);
+          pushEvent('apply', next);
         }}
-        onApply={(payload: DialPathPayload) => {
-          // Explicit "apply" — slide toast in, auto-dismiss after 5s.
-          setLastApplied(payload);
-          window.setTimeout(() => {
-            setLastApplied(prev => (prev === payload ? null : prev));
-          }, 5000);
-        }}
-        applyLabel="APPLY"
-        toolbar={<ThemeSwitcher theme={theme} onChange={setTheme} />}
+        toolbar={<ThemeSwitcher theme={theme} onChange={setTheme} compact={compact} />}
       />
 
-      {/* Intro card — bottom-left, fades to translucent on idle to stay
-          out of the way. The dial's own title sits top-left so this gives
-          the user something to read while figuring out the gesture. */}
-      <IntroCard theme={theme} />
+      <InspectorPanel
+        compact={compact}
+        theme={theme}
+        sample={sample}
+        sampleId={sampleId}
+        payload={payload}
+        applied={applied}
+        events={events}
+        onSampleChange={handleSampleChange}
+      />
 
-      {/* Styled results preview — slides in from the right when you drill all
-          the way to a leaf. This is "the page opening up" at the end of the
-          gesture. Dismiss with the × or by undoing back up a level. */}
-      <AnimatePresence>
-        {leafPath && (
-          <PreviewPanel
-            key="preview"
-            path={leafPath}
-            theme={theme}
-            onClose={() => setLeafPath(null)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Last-applied toast — slides up from the bottom centre. */}
-      <AnimatePresence>
-        {lastApplied && (
-          <AppliedToast key="toast" payload={lastApplied} theme={theme} />
-        )}
-      </AnimatePresence>
-
-      {/* Footer link to the repo — bottom-right, very small. */}
-      <FooterLink theme={theme} />
+      <FooterLink theme={theme} compact={compact} />
     </div>
   );
 }
 
-// =============================================================================
-// IntroCard — discoverability copy for first-time visitors.
-// Three-line composition: what + how + key gestures.
-// =============================================================================
-function IntroCard({ theme }: { theme: RadialDialTheme }) {
+function InspectorPanel({
+  compact,
+  theme,
+  sample,
+  sampleId,
+  payload,
+  applied,
+  events,
+  onSampleChange,
+}: {
+  compact: boolean;
+  theme: RadialDialTheme;
+  sample: SampleTree;
+  sampleId: SampleId;
+  payload: DialPathPayload;
+  applied: DialPathPayload | null;
+  events: EventEntry[];
+  onSampleChange: (id: SampleId) => void;
+}) {
+  const isLight = theme.mode === 'light';
+  const glass = glassSurface(theme, { alpha: isLight ? 62 : 42, blur: 22 });
+  const nodes = payload.nodes;
+  const count = Math.round(payload.count ?? countForPath(nodes, sample.total));
+  const pathText = nodes.map(node => node.label).join(' > ') || 'root';
+  const payloadJson = JSON.stringify(
+    {
+      nodes: nodes.map(node => ({ id: node.id, label: node.label })),
+      count,
+    },
+    null,
+    2,
+  );
+
+  return (
+    <motion.aside
+      aria-label="Interaction inspector"
+      style={{
+        position: 'absolute',
+        zIndex: 35,
+        right: compact ? 16 : 24,
+        left: compact ? 16 : 'auto',
+        top: compact ? 'auto' : 92,
+        bottom: compact ? 16 : 24,
+        width: compact ? 'auto' : 344,
+        maxHeight: compact ? '42dvh' : 'calc(100dvh - 116px)',
+        overflow: 'auto',
+        padding: compact ? 16 : 18,
+        color: theme.ink,
+        background: glass.background,
+        backdropFilter: glass.backdropFilter,
+        WebkitBackdropFilter: glass.WebkitBackdropFilter,
+        border: glass.border,
+        borderRadius: 8,
+        boxShadow: glass.glassShadow,
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+      initial={{ opacity: 0, x: compact ? 0 : 18, y: compact ? 18 : 0 }}
+      animate={{ opacity: 1, x: 0, y: 0 }}
+      transition={{ duration: 0.34, ease: EXPO_OUT }}
+    >
+      <PanelKicker theme={theme}>Primitive inspector</PanelKicker>
+      <div
+        style={{
+          fontFamily: theme.serif,
+          fontStyle: 'italic',
+          fontSize: compact ? 20 : 24,
+          lineHeight: 1.12,
+          marginTop: 8,
+          marginBottom: 14,
+        }}
+      >
+        {pathText}
+      </div>
+
+      <SegmentedSamples
+        theme={theme}
+        active={sampleId}
+        onChange={onSampleChange}
+      />
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 8,
+          marginTop: 14,
+        }}
+      >
+        <MetricCell theme={theme} label="Depth" value={String(nodes.length)} />
+        <MetricCell theme={theme} label={sample.countLabel} value={count.toLocaleString('en-US')} />
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <PanelKicker theme={theme}>Payload</PanelKicker>
+        <pre
+          style={{
+            margin: '8px 0 0',
+            padding: 12,
+            borderRadius: 6,
+            background: mix(theme.ink, isLight ? 5 : 14, 'transparent'),
+            border: `1px solid ${mix(theme.ink, isLight ? 10 : 18)}`,
+            color: mix(theme.ink, isLight ? 82 : 78),
+            fontFamily: theme.mono,
+            fontSize: 11,
+            lineHeight: 1.45,
+            overflow: 'auto',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {payloadJson}
+        </pre>
+      </div>
+
+      <AnimatePresence>
+        {applied && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.25, ease: EXPO_OUT }}
+            style={{
+              marginTop: 12,
+              padding: '10px 12px',
+              borderRadius: 6,
+              background: mix(theme.accent, isLight ? 10 : 16, 'transparent'),
+              border: `1px solid ${mix(theme.accent, 30)}`,
+              fontFamily: theme.mono,
+              fontSize: 11,
+              color: mix(theme.accent, isLight ? 88 : 78),
+            }}
+          >
+            emitted {applied.nodes.map(node => node.label).join(' > ') || 'root'}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div style={{ marginTop: 14 }}>
+        <PanelKicker theme={theme}>Events</PanelKicker>
+        <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+          {(events.length ? events : [{ kind: 'change' as const, label: 'waiting', at: '--:--:--' }]).map((event, index) => (
+            <div
+              key={`${event.kind}-${event.at}-${index}`}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '64px 1fr 64px',
+                gap: 8,
+                alignItems: 'center',
+                padding: '7px 0',
+                borderTop: index === 0 ? 'none' : `1px solid ${mix(theme.ink, isLight ? 8 : 14)}`,
+                fontFamily: theme.mono,
+                fontSize: 10,
+                color: mix(theme.ink, isLight ? 58 : 66),
+              }}
+            >
+              <span style={{ color: event.kind === 'apply' ? theme.accent : mix(theme.ink, isLight ? 54 : 62) }}>
+                {event.kind}
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {event.label}
+              </span>
+              <span style={{ textAlign: 'right', fontFeatureSettings: '"tnum" 1' }}>
+                {event.at}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.aside>
+  );
+}
+
+function PanelKicker({ theme, children }: { theme: RadialDialTheme; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        fontFamily: theme.mono,
+        fontSize: 10,
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        color: mix(theme.ink, theme.mode === 'light' ? 42 : 54),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MetricCell({
+  theme,
+  label,
+  value,
+}: {
+  theme: RadialDialTheme;
+  label: string;
+  value: string;
+}) {
   const isLight = theme.mode === 'light';
   return (
     <div
       style={{
-        position: 'absolute',
-        left: 32,
-        bottom: 32,
-        zIndex: 25,
-        maxWidth: 280,
-        pointerEvents: 'none',
-        fontFamily: theme.serif,
+        padding: '10px 12px',
+        borderRadius: 6,
+        border: `1px solid ${mix(theme.ink, isLight ? 10 : 16)}`,
+        background: mix(theme.paper, isLight ? 52 : 22, 'transparent'),
       }}
     >
       <div
         style={{
-          fontSize: 10,
-          letterSpacing: '0.22em',
-          textTransform: 'uppercase',
           fontFamily: theme.mono,
-          color: mix(theme.ink, isLight ? 45 : 55),
-          marginBottom: 6,
+          fontSize: 9,
+          letterSpacing: '0.16em',
+          textTransform: 'uppercase',
+          color: mix(theme.ink, isLight ? 42 : 54),
+          marginBottom: 5,
         }}
       >
-        DEMO
+        {label}
       </div>
       <div
         style={{
-          fontSize: 14,
-          fontStyle: 'italic',
-          color: mix(theme.ink, isLight ? 65 : 65),
-          letterSpacing: '-0.005em',
-          lineHeight: 1.45,
+          fontFamily: theme.mono,
+          fontSize: 18,
+          fontFeatureSettings: '"tnum" 1',
+          color: theme.ink,
         }}
       >
-        A hierarchical marking-menu dial. Click any option, or press
-        the centre and drag toward one. Keep drawing to commit the
-        next level. Escape to back out.
+        {value}
       </div>
     </div>
   );
 }
 
-// =============================================================================
-// AppliedToast — slides up from the bottom centre showing the path
-// that was just applied. Auto-dismisses (parent state). Issue #12 visualised.
-// =============================================================================
-function AppliedToast({
-  payload,
+function SegmentedSamples({
   theme,
-}: {
-  payload: DialPathPayload;
-  theme: RadialDialTheme;
-}) {
-  const isLight = theme.mode === 'light';
-  const pathStr = payload.nodes.map(n => n.label).join(' › ');
-  return (
-    <motion.div
-      style={{
-        position: 'absolute',
-        bottom: 64,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 26,
-        padding: '10px 18px',
-        background: mix(theme.ink, isLight ? 90 : 80, theme.paper),
-        color: theme.paper,
-        borderRadius: 999,
-        boxShadow: `0 8px 24px ${mix(theme.ink, isLight ? 14 : 36)}`,
-        fontFamily: theme.mono,
-        fontSize: 12,
-        letterSpacing: '0.04em',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-      }}
-      initial={{ opacity: 0, y: 16, scale: 0.94 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.96 }}
-      transition={{
-        opacity: { duration: 0.3, ease: EXPO_OUT },
-        y: { duration: 0.3, ease: EXPO_OUT },
-        scale: { duration: 0.3, ease: EXPO_OUT },
-        exit: { duration: 0.25, ease: SMOOTH_OUT },
-      }}
-    >
-      <span
-        style={{
-          fontSize: 10,
-          letterSpacing: '0.18em',
-          textTransform: 'uppercase',
-          color: mix(theme.accent, 90, theme.paper),
-        }}
-      >
-        APPLIED
-      </span>
-      <span style={{ opacity: 0.4 }}>—</span>
-      <span style={{ fontFamily: theme.serif, fontStyle: 'italic', fontSize: 13 }}>
-        {pathStr}
-      </span>
-      {payload.count !== undefined && (
-        <>
-          <span style={{ opacity: 0.4 }}>·</span>
-          <span style={{ fontFeatureSettings: '"tnum" 1' }}>
-            {Math.round(payload.count).toLocaleString('en-US')} matches
-          </span>
-        </>
-      )}
-    </motion.div>
-  );
-}
-
-// =============================================================================
-// PreviewPanel — "the page opening up" at the end of the gesture.
-//
-// Slides in from the right when the user drills to a leaf. Shows the composed
-// query as an editorial headline, the running match count, and a few mock
-// result cards styled to feel like a real results page. Dim backdrop behind;
-// click it (or the ×) to dismiss. EXPO_OUT entrance / SMOOTH_OUT exit per the
-// asymmetric-timing rule.
-// =============================================================================
-function PreviewPanel({
-  path,
-  theme,
-  onClose,
-}: {
-  path: DialNode[];
-  theme: RadialDialTheme;
-  onClose: () => void;
-}) {
-  const isLight = theme.mode === 'light';
-  const count = Math.round(countForPath(path));
-  const results = mockResults(path);
-  const queryStr = path.map(n => n.label).join(' · ');
-  // Heavy frosted glass for the panel — the dial blurs through it (iOS style).
-  const panelGlass = glassSurface(theme, { alpha: isLight ? 62 : 46, blur: 28 });
-  const cardGlass = glassSurface(theme, { alpha: isLight ? 46 : 26, blur: 8 });
-
-  return (
-    <>
-      {/* Backdrop — light dim + blur, click to dismiss. Lets the dial stay
-          faintly visible behind the glass rather than going opaque. */}
-      <motion.div
-        onClick={onClose}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          zIndex: 40,
-          background: mix(theme.ink, isLight ? 6 : 18, 'transparent'),
-          backdropFilter: 'blur(3px) saturate(140%)',
-          WebkitBackdropFilter: 'blur(3px) saturate(140%)',
-        }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.3, ease: SMOOTH_OUT }}
-      />
-      {/* Panel — frosted glass pane sliding in from the right edge. */}
-      <motion.aside
-        role="dialog"
-        aria-label="Results preview"
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 41,
-          width: 'min(420px, 92vw)',
-          background: panelGlass.background,
-          backdropFilter: panelGlass.backdropFilter,
-          WebkitBackdropFilter: panelGlass.WebkitBackdropFilter,
-          borderLeft: `1px solid ${isLight ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.12)'}`,
-          boxShadow: `-24px 0 60px ${mix(theme.ink, isLight ? 12 : 44)}, inset 1px 0 0 rgba(255,255,255,${isLight ? 0.5 : 0.08})`,
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '28px 28px 20px',
-          overflowY: 'auto',
-        }}
-        initial={{ x: '101%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '101%' }}
-        transition={{
-          // Asymmetric: slower expo-out entrance, snappier smooth-out exit.
-          x: { type: 'tween', duration: 0.42, ease: EXPO_OUT },
-        }}
-      >
-        {/* Header row — label + close */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 18,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 10,
-              letterSpacing: '0.22em',
-              textTransform: 'uppercase',
-              fontFamily: theme.mono,
-              color: mix(theme.ink, isLight ? 45 : 60),
-            }}
-          >
-            Preview
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close preview"
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
-              border: 'none',
-              background: mix(theme.ink, isLight ? 6 : 14, 'transparent'),
-              color: mix(theme.ink, isLight ? 60 : 70),
-              cursor: 'pointer',
-              fontSize: 15,
-              lineHeight: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background 180ms cubic-bezier(0.22,1,0.36,1)',
-            }}
-            onMouseEnter={e =>
-              (e.currentTarget.style.background = mix(theme.accent, 14, 'transparent'))
-            }
-            onMouseLeave={e =>
-              (e.currentTarget.style.background = mix(theme.ink, isLight ? 6 : 14, 'transparent'))
-            }
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Query headline */}
-        <div
-          style={{
-            fontFamily: theme.serif,
-            fontStyle: 'italic',
-            fontSize: 22,
-            lineHeight: 1.25,
-            color: theme.ink,
-            marginBottom: 6,
-            letterSpacing: '-0.01em',
-          }}
-        >
-          {queryStr}
-        </div>
-
-        {/* Count line */}
-        <div
-          style={{
-            fontFamily: theme.mono,
-            fontSize: 13,
-            color: mix(theme.accent, 85, isLight ? '#000' : '#fff'),
-            fontFeatureSettings: '"tnum" 1',
-            marginBottom: 22,
-          }}
-        >
-          {count.toLocaleString('en-US')} matching roles
-        </div>
-
-        {/* Result cards */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {results.map((r, i) => (
-            <motion.div
-              key={r.company + r.title}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                delay: 0.18 + i * 0.06,
-                duration: 0.34,
-                ease: EXPO_OUT,
-              }}
-              style={{
-                padding: '14px 16px',
-                borderRadius: 14,
-                background: cardGlass.background,
-                backdropFilter: cardGlass.backdropFilter,
-                WebkitBackdropFilter: cardGlass.WebkitBackdropFilter,
-                border: cardGlass.border,
-                boxShadow: cardGlass.glassShadow,
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'baseline',
-                  marginBottom: 4,
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: 'Inter, system-ui, sans-serif',
-                    fontWeight: 550,
-                    fontSize: 14,
-                    color: theme.ink,
-                  }}
-                >
-                  {r.title}
-                </span>
-                <span
-                  style={{
-                    fontFamily: theme.mono,
-                    fontSize: 11,
-                    color: mix(theme.accent, 80, isLight ? '#000' : '#fff'),
-                    fontFeatureSettings: '"tnum" 1',
-                  }}
-                >
-                  {r.salary}
-                </span>
-              </div>
-              <div
-                style={{
-                  fontFamily: theme.serif,
-                  fontStyle: 'italic',
-                  fontSize: 13,
-                  color: mix(theme.ink, isLight ? 55 : 65),
-                }}
-              >
-                {r.company} · {r.location}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Footer hint */}
-        <div
-          style={{
-            marginTop: 'auto',
-            paddingTop: 18,
-            fontFamily: theme.mono,
-            fontSize: 10,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: mix(theme.ink, isLight ? 40 : 50),
-          }}
-        >
-          Escape or × to refine
-        </div>
-      </motion.aside>
-    </>
-  );
-}
-
-// Generate plausible mock result rows from the committed path. Purely
-// illustrative — a real consumer would query their own data here.
-function mockResults(path: DialNode[]): Array<{
-  title: string;
-  company: string;
-  location: string;
-  salary: string;
-}> {
-  const leaf = path[path.length - 1]?.label ?? 'Role';
-  const companies = ['Uniswap Labs', 'Phantom', 'Farcaster', 'Base', 'Helius'];
-  const locations = ['Remote', 'New York', 'Remote · EU', 'San Francisco'];
-  const salaries = ['$160k', '$185k', '$210k', '$140k', '$175k'];
-  const titlePrefix = leaf.includes('$') || /Seed|Series|Public/.test(leaf)
-    ? 'Engineer'
-    : leaf;
-  return Array.from({ length: 4 }, (_, i) => ({
-    title: `${titlePrefix} ${['', 'II', 'Senior', 'Lead'][i] ?? ''}`.trim(),
-    company: companies[i % companies.length],
-    location: locations[i % locations.length],
-    salary: salaries[i % salaries.length],
-  }));
-}
-
-// =============================================================================
-// FooterLink — tiny mono-spaced link to the repo. Bottom-right.
-// =============================================================================
-function FooterLink({ theme }: { theme: RadialDialTheme }) {
-  const isLight = theme.mode === 'light';
-  return (
-    <a
-      href="https://github.com/Mikeishiring/radial-dial"
-      target="_blank"
-      rel="noreferrer noopener"
-      style={{
-        position: 'absolute',
-        right: 32,
-        bottom: 32,
-        zIndex: 25,
-        fontSize: 10,
-        letterSpacing: '0.18em',
-        textTransform: 'uppercase',
-        fontFamily: theme.mono,
-        color: mix(theme.ink, isLight ? 45 : 55),
-        textDecoration: 'none',
-        transition: 'color 200ms cubic-bezier(0.22, 1, 0.36, 1)',
-      }}
-      onMouseEnter={e => (e.currentTarget.style.color = theme.accent)}
-      onMouseLeave={e =>
-        (e.currentTarget.style.color = mix(theme.ink, isLight ? 45 : 55))
-      }
-    >
-      Mikeishiring/radial-dial ↗
-    </a>
-  );
-}
-
-// =============================================================================
-// Theme switcher — small pill row, slides indicator under active theme.
-// =============================================================================
-// Segmented pill (Pill Consolidation #2): ONE container with a sliding
-// indicator, not three sibling pills. The active indicator is a shared-layout
-// motion.div — Framer FLIP-animates it between segments, so switching themes
-// slides the accent capsule across rather than hard-swapping backgrounds.
-function ThemeSwitcher({
-  theme,
+  active,
   onChange,
 }: {
   theme: RadialDialTheme;
+  active: SampleId;
+  onChange: (id: SampleId) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Sample tree"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 4,
+        padding: 4,
+        borderRadius: 8,
+        border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 10 : 18)}`,
+        background: mix(theme.ink, theme.mode === 'light' ? 4 : 10, 'transparent'),
+      }}
+    >
+      {SAMPLES.map(sample => {
+        const selected = active === sample.id;
+        return (
+          <button
+            key={sample.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(sample.id)}
+            style={{
+              minWidth: 0,
+              padding: '7px 8px',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              background: selected ? mix(theme.accent, 16) : 'transparent',
+              color: selected ? theme.accent : mix(theme.ink, theme.mode === 'light' ? 62 : 68),
+              fontFamily: theme.mono,
+              fontSize: 10,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+            }}
+          >
+            {sample.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ThemeSwitcher({
+  theme,
+  onChange,
+  compact,
+}: {
+  theme: RadialDialTheme;
   onChange: (t: RadialDialTheme) => void;
+  compact: boolean;
 }) {
   return (
     <div
       role="radiogroup"
       aria-label="Theme"
       style={{
-        display: 'inline-flex',
+        display: compact ? 'none' : 'inline-flex',
         alignItems: 'center',
         position: 'relative',
         padding: 3,
         gap: 2,
         background: mix(theme.ink, theme.mode === 'light' ? 4 : 8, theme.paper),
         border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 10 : 18)}`,
-        borderRadius: 999,
+        borderRadius: 8,
         fontFamily: theme.mono,
         fontSize: 9,
-        letterSpacing: '0.18em',
+        letterSpacing: '0.16em',
         textTransform: 'uppercase',
       }}
     >
-      {ALL_THEMES.map((t: RadialDialTheme) => {
-        const active = t.name === theme.name;
+      {ALL_THEMES.map(nextTheme => {
+        const active = nextTheme.name === theme.name;
         return (
           <motion.button
-            key={t.name}
+            key={nextTheme.name}
             type="button"
             role="radio"
             aria-checked={active}
-            onClick={() => onChange(t)}
-            aria-label={`Switch to ${t.name} theme`}
-            whileTap={{ scale: 0.94 }}
-            transition={{ duration: 0.1 }}
+            onClick={() => onChange(nextTheme)}
+            aria-label={`Switch to ${nextTheme.name} theme`}
+            whileTap={{ scale: 0.96 }}
             style={{
               position: 'relative',
-              padding: '4px 10px',
-              borderRadius: 999,
+              padding: '5px 10px',
+              borderRadius: 6,
               background: 'transparent',
               color: active ? theme.accent : mix(theme.ink, 58),
               border: 'none',
               cursor: 'pointer',
             }}
           >
-            {/* Sliding indicator — shared layoutId means Framer animates it
-                from the previously-active segment to this one. */}
             {active && (
               <motion.span
                 layoutId="theme-indicator"
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  borderRadius: 999,
-                  background: mix(theme.accent, 16),
-                  boxShadow: `inset 0 0 0 1px ${mix(theme.accent, 28)}`,
+                  borderRadius: 6,
+                  background: mix(theme.accent, 14),
+                  boxShadow: `inset 0 0 0 1px ${mix(theme.accent, 26)}`,
                 }}
                 transition={{ type: 'spring', stiffness: 420, damping: 34 }}
               />
             )}
-            <span style={{ position: 'relative', zIndex: 1, transition: 'color 220ms cubic-bezier(0.22,1,0.36,1)' }}>
-              {t.name}
-            </span>
+            <span style={{ position: 'relative', zIndex: 1 }}>{nextTheme.name}</span>
           </motion.button>
         );
       })}
@@ -699,21 +653,40 @@ function ThemeSwitcher({
   );
 }
 
-// =============================================================================
-// Hand-inked category icons.
-// Each: 28×28 rendered, 1.6px stroke, ROUND caps and joins so the line ends
-// look like brush strokes rather than guillotined edges. Slight asymmetry
-// is deliberate — these should feel drawn, not generated.
-//
-//  Role       → a chair from the side. "Where the role sits."
-//  Seniority  → ascending steps. Walking up the ranks.
-//  Salary     → calligraphic $ with extended stem. Editorial flourish.
-//  Stage      → a small spire. The company building, growing tall.
-// =============================================================================
+function FooterLink({ theme, compact }: { theme: RadialDialTheme; compact: boolean }) {
+  if (compact) return null;
+  return (
+    <a
+      href="https://github.com/Mikeishiring/radial-dial"
+      target="_blank"
+      rel="noreferrer noopener"
+      style={{
+        position: 'absolute',
+        left: 32,
+        bottom: 28,
+        zIndex: 25,
+        fontSize: 10,
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        fontFamily: theme.mono,
+        color: mix(theme.ink, theme.mode === 'light' ? 45 : 55),
+        textDecoration: 'none',
+        transition: 'color 200ms cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
+      onMouseEnter={event => (event.currentTarget.style.color = theme.accent)}
+      onMouseLeave={event =>
+        (event.currentTarget.style.color = mix(theme.ink, theme.mode === 'light' ? 45 : 55))
+      }
+    >
+      Mikeishiring/radial-dial
+    </a>
+  );
+}
+
 const ICON_SIZE = 28;
 const ICON_STROKE = 1.6;
 
-function RoleIcon() {
+function BaseIcon({ children }: { children: ReactNode }) {
   return (
     <svg
       width={ICON_SIZE}
@@ -726,73 +699,67 @@ function RoleIcon() {
       strokeLinejoin="round"
       style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
     >
-      {/* chair back */}
-      <path d="M7.5 5 L 7.2 14" />
-      {/* seat */}
-      <path d="M5.5 14 L 17.8 14" />
-      {/* rear leg */}
-      <path d="M7.5 14 L 7 21" />
-      {/* front leg */}
-      <path d="M16 14 L 17 21" />
+      {children}
     </svg>
   );
 }
 
-function SeniorityIcon() {
+function GridIcon() {
   return (
-    <svg
-      width={ICON_SIZE}
-      height={ICON_SIZE}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={ICON_STROKE}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
-    >
-      <path d="M3.5 19.5 L 8 19.5 L 8 14.5 L 13 14.5 L 13 9.5 L 18 9.5 L 18 4.5 L 21 4.5" />
-    </svg>
+    <BaseIcon>
+      <path d="M5 5 H10 V10 H5 Z" />
+      <path d="M14 5 H19 V10 H14 Z" />
+      <path d="M5 14 H10 V19 H5 Z" />
+      <path d="M14 14 H19 V19 H14 Z" />
+    </BaseIcon>
   );
 }
 
-function SalaryIcon() {
+function TransformIcon() {
   return (
-    <svg
-      width={ICON_SIZE}
-      height={ICON_SIZE}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={ICON_STROKE}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
-    >
-      <path d="M12 3 L 12 21" />
-      <path d="M16.5 7 Q 12 5 8.5 7 Q 5.2 9 8.4 11.4 Q 11.5 13.4 15 14.6 Q 18 16 15 19 Q 12 20.8 7.8 18.8" />
-    </svg>
+    <BaseIcon>
+      <path d="M7 7 H17 V17 H7 Z" />
+      <path d="M4 12 H20" />
+      <path d="M12 4 V20" />
+    </BaseIcon>
   );
 }
 
-function StageIcon() {
+function InspectIcon() {
   return (
-    <svg
-      width={ICON_SIZE}
-      height={ICON_SIZE}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={ICON_STROKE}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ width: ICON_SIZE, height: ICON_SIZE, display: 'block', flexShrink: 0 }}
-    >
-      <path d="M8 21 L 8 9.5" />
-      <path d="M16 21 L 16 9.5" />
-      <path d="M7 21 L 17 21" />
-      <path d="M6.5 9.5 L 12 4 L 17.5 9.5" />
-      <circle cx="12" cy="14.5" r="0.9" fill="currentColor" stroke="none" />
-    </svg>
+    <BaseIcon>
+      <circle cx="10.5" cy="10.5" r="5.5" />
+      <path d="M15 15 L20 20" />
+      <path d="M8.5 10.5 H12.5" />
+    </BaseIcon>
+  );
+}
+
+function CommitIcon() {
+  return (
+    <BaseIcon>
+      <path d="M5 12.5 L10 17.5 L19 6.5" />
+      <path d="M5 20 H19" />
+    </BaseIcon>
+  );
+}
+
+function StackIcon() {
+  return (
+    <BaseIcon>
+      <path d="M6 7 L12 4 L18 7 L12 10 Z" />
+      <path d="M6 12 L12 15 L18 12" />
+      <path d="M6 17 L12 20 L18 17" />
+    </BaseIcon>
+  );
+}
+
+function OrbitIcon() {
+  return (
+    <BaseIcon>
+      <circle cx="12" cy="12" r="2" />
+      <path d="M4.5 12 C4.5 7.5 19.5 7.5 19.5 12 C19.5 16.5 4.5 16.5 4.5 12 Z" />
+      <path d="M12 4.5 C16.5 4.5 16.5 19.5 12 19.5 C7.5 19.5 7.5 4.5 12 4.5 Z" />
+    </BaseIcon>
   );
 }

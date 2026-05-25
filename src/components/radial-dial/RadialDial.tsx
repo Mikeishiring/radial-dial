@@ -239,10 +239,24 @@ export type RadialDialProps = {
   hint?: string;
   /** Function mapping current count → display string. Default formats as integer. */
   formatCount?: (n: number) => string;
-  /** Word(s) shown after the count (e.g. "jobs", "items"). */
+  /** Word(s) shown after the count (e.g. "items", "nodes"). */
   countLabel?: string;
   /** Total to multiply down the path. Set undefined to hide the counter. */
   total?: number;
+  /** Base children fan radius before responsive scaling. */
+  fanRadius?: number;
+  /** Base outward distance needed to commit before responsive scaling. */
+  commitDistance?: number;
+  /** Base distance required before another commit/undo can fire. */
+  settleRadius?: number;
+  /** Base inward distance that reverse-drags one level back. */
+  undoRadius?: number;
+  /** Half-cone, in radians, within which a child counts as selected. */
+  angularTolerance?: number;
+  /** Whether to show the visible Back control while committed. */
+  showBack?: boolean;
+  /** Where committed Back/Apply controls sit. "auto" moves them low on phones. */
+  actionPlacement?: 'auto' | 'path' | 'bottom';
   /** Render-prop slot for additional UI in the top-right toolbar area. */
   toolbar?: React.ReactNode;
   /** Fired on every commit/undo. */
@@ -265,8 +279,15 @@ export function RadialDial({
   title,
   hint = 'press, draw a line, release.',
   formatCount = n => Math.max(0, Math.round(n)).toLocaleString('en-US'),
-  countLabel = 'jobs',
+  countLabel = 'items',
   total,
+  fanRadius: fanRadiusProp = FAN_RADIUS,
+  commitDistance: commitDistanceProp = COMMIT_DISTANCE,
+  settleRadius,
+  undoRadius,
+  angularTolerance,
+  showBack = true,
+  actionPlacement = 'auto',
   toolbar,
   onChange,
   onComplete,
@@ -319,8 +340,8 @@ export function RadialDial({
   // narrow viewports so the dial never falls off the edge. See
   // computeStageScale() above for the design call. (Issue #291)
   const stageScale = useMemo(() => computeStageScale(stageSize), [stageSize]);
-  const fanRadius = FAN_RADIUS * stageScale;
-  const commitDistance = COMMIT_DISTANCE * stageScale;
+  const fanRadius = fanRadiusProp * stageScale;
+  const commitDistance = commitDistanceProp * stageScale;
   // Padding used by clampToStage so children don't overflow the edge.
   // Stays proportional to the visible bubble. (Bubble diameter itself
   // is unscaled for now — it's a leaf-component import, not a prop.)
@@ -330,6 +351,9 @@ export function RadialDial({
     tree,
     commitDistance,
     fanRadius,
+    settleRadius: settleRadius !== undefined ? settleRadius * stageScale : undefined,
+    undoRadius: undoRadius !== undefined ? undoRadius * stageScale : undefined,
+    angularTolerance,
     onChange,
     onComplete,
   });
@@ -494,7 +518,10 @@ export function RadialDial({
       // Don't capture arrow keys / enter mid-drag — drag owns input.
       if (dial.phase === 'drawing') return;
 
-      const options = persistentOptions ?? [];
+      const options =
+        dial.phase === 'committed' && dial.activeEntry?.node.children?.length
+          ? clampedChildren
+          : persistentOptions ?? [];
       const len = options.length;
 
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -566,6 +593,7 @@ export function RadialDial({
       onApply,
       applyCurrent,
       persistentOptions,
+      clampedChildren,
       idleAnchor,
       focusedOptionIndex,
     ],
@@ -604,6 +632,12 @@ export function RadialDial({
   }, [dial.frozenStrokes, dial.path, dial.phase, renderedLive, dial.activeEntry]);
 
   const isLight = theme.mode === 'light';
+  const resolvedActionPlacement =
+    actionPlacement === 'auto'
+      ? stageSize.w > 0 && stageSize.w < 640
+        ? 'bottom'
+        : 'path'
+      : actionPlacement;
 
   // Recent cursor velocity (px/ms, smoothed by EMA at capture). Single
   // scalar that drives FOUR coordinated effects:
@@ -843,10 +877,11 @@ export function RadialDial({
           Slides in beneath the PathLine; click or Enter fires the payload.
           Issue #12. */}
       <AnimatePresence>
-        {dial.phase === 'committed' && dial.path.length > 1 && (
+        {showBack && dial.phase === 'committed' && dial.path.length > 1 && (
           <BackButton
             key="back"
             theme={theme}
+            placement={resolvedActionPlacement}
             onClick={dial.popBack}
           />
         )}
@@ -856,6 +891,7 @@ export function RadialDial({
             label={applyLabel}
             count={count}
             formatCount={formatCount}
+            placement={resolvedActionPlacement}
             onClick={applyCurrent}
           />
         )}
@@ -871,6 +907,8 @@ export function RadialDial({
         // Issue #11.
         role="menu"
         aria-label={title ?? `${tree.label} selector`}
+        aria-roledescription="radial hierarchy selector"
+        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Enter Escape Backspace"
         aria-expanded={dial.phase === 'drawing' || dial.path.length > 1}
         aria-orientation="horizontal"
         tabIndex={0}
