@@ -116,6 +116,88 @@ export function CommitWave({
 }
 
 // =============================================================================
+// BacktrackRipple — reverse feedback when the path shortens. Commit effects
+// make forward movement feel physical; this gives Back/Escape/reverse-drag the
+// same treatment so stepping out reads as movement, not disappearance.
+// =============================================================================
+type BacktrackData = { id: string; from: Vec; to: Vec };
+
+export function BacktrackRipple({
+  path,
+  theme,
+  reduceMotion,
+}: {
+  path: DialPathEntry[];
+  theme: RadialDialTheme;
+  reduceMotion: boolean;
+}) {
+  const [backtrack, setBacktrack] = useState<BacktrackData | null>(null);
+  const prevPath = useRef(path);
+
+  useEffect(() => {
+    const prev = prevPath.current;
+    const shrank = path.length < prev.length;
+    prevPath.current = path;
+    if (!shrank || reduceMotion) return;
+    const removed = prev[prev.length - 1];
+    const current = path[path.length - 1] ?? prev[0];
+    if (!removed || !current) return;
+    const next = {
+      id: `back-${removed.node.id}-${performance.now()}`,
+      from: removed.pos,
+      to: current.pos,
+    };
+    setBacktrack(next);
+    const t = setTimeout(
+      () => setBacktrack(existing => (existing?.id === next.id ? null : existing)),
+      520,
+    );
+    return () => clearTimeout(t);
+  }, [path, reduceMotion]);
+
+  if (!backtrack) return null;
+  const dx = backtrack.to.x - backtrack.from.x;
+  const dy = backtrack.to.y - backtrack.from.y;
+  return (
+    <>
+      <m.div
+        key={`back-ring-${backtrack.id}`}
+        className="pointer-events-none absolute"
+        style={{
+          left: backtrack.from.x - 42,
+          top: backtrack.from.y - 42,
+          width: 84,
+          height: 84,
+          borderRadius: '50%',
+          border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 22 : 32)}`,
+          zIndex: 3,
+        }}
+        initial={{ scale: 1.08, opacity: 0.55 }}
+        animate={{ scale: 0.42, opacity: 0 }}
+        transition={{ duration: 0.46, ease: SMOOTH_OUT }}
+      />
+      <m.div
+        key={`back-dot-${backtrack.id}`}
+        className="pointer-events-none absolute"
+        style={{
+          left: backtrack.from.x - 3,
+          top: backtrack.from.y - 3,
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: mix(theme.accent, 72),
+          boxShadow: `0 0 16px ${mix(theme.accent, 28)}`,
+          zIndex: 4,
+        }}
+        initial={{ x: 0, y: 0, opacity: 0.85, scale: 1 }}
+        animate={{ x: dx, y: dy, opacity: 0, scale: 0.55 }}
+        transition={{ duration: 0.42, ease: EXPO_OUT }}
+      />
+    </>
+  );
+}
+
+// =============================================================================
 // SettleRipple — the water-drop-landing ring emitted on every commit.
 // Subtler than CommitWave (which is iris-open at 85% alpha): this one is
 // 18% accent alpha, fades to 0 over 700ms while expanding 60→180px radius.

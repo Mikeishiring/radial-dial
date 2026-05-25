@@ -25,6 +25,7 @@ import type { FrozenStroke, InkPoint, RadialDialTheme, Vec } from './types';
  *   StrokeDrawIn       → draw-in animation overlay on freshly frozen strokes
  *   InkDropPool        → small accent dot at each stroke's destination
  *   TravelingPulse     → single moving dash flowing across whole path
+ *   HomingRail         → magnetic guide line from active node to homed target
  *   LiveStrokeLayer    → the in-progress stroke during a drag gesture
  *   StrokeSegments    → triple-pass ink rendering (halo + mid + sharp top)
  *
@@ -243,6 +244,75 @@ export function TravelingPulse({ d, theme }: { d: string; theme: RadialDialTheme
   );
 }
 
+/**
+ * HomingRail — a quiet magnetic guide that appears only when the cursor is
+ * convincingly aimed at an option. It makes the "catch" readable before the
+ * commit fires, without changing the actual hit-testing.
+ */
+export function HomingRail({
+  from,
+  to,
+  strength,
+  progress,
+  theme,
+}: {
+  from: Vec;
+  to: Vec;
+  strength: number;
+  progress: number;
+  theme: RadialDialTheme;
+}) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const start = {
+    x: from.x + ux * ACTIVE_TRIM_RADIUS,
+    y: from.y + uy * ACTIVE_TRIM_RADIUS,
+  };
+  const end = {
+    x: to.x - ux * SETTLED_TRIM_RADIUS,
+    y: to.y - uy * SETTLED_TRIM_RADIUS,
+  };
+  const d = `M${start.x.toFixed(1)},${start.y.toFixed(1)} L${end.x.toFixed(1)},${end.y.toFixed(1)}`;
+  const opacity = Math.max(0, Math.min(1, (strength - 0.14) / 0.86)) * 0.7;
+  const dash = 0.08 + Math.max(0, Math.min(1, progress)) * 0.16;
+
+  if (opacity <= 0.02) return null;
+  return (
+    <m.g
+      initial={{ opacity: 0 }}
+      animate={{ opacity }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.16, ease: SMOOTH_OUT }}
+    >
+      <path
+        d={d}
+        pathLength={1}
+        fill="none"
+        stroke={theme.accent}
+        strokeWidth={7}
+        strokeOpacity={0.06}
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${Math.max(0.08, 1 - dash)}`}
+        strokeDashoffset={-progress * 0.18}
+      />
+      <path
+        d={d}
+        pathLength={1}
+        fill="none"
+        stroke={theme.accent}
+        strokeWidth={1.35}
+        strokeOpacity={0.5}
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${Math.max(0.08, 1 - dash)}`}
+        strokeDashoffset={-progress * 0.18}
+      />
+    </m.g>
+  );
+}
+
 // =============================================================================
 // LiveStrokeLayer — the in-progress stroke during a drag gesture.
 // Width modulates with confidence (decisive motion = thicker, orbital = thin).
@@ -264,7 +334,7 @@ export function LiveStrokeLayer({
   );
   // Confidence drives line weight — decisive motion = thicker; orbital = thin.
   const confidence = useMemo(() => strokeConfidence(points), [points]);
-  const widthMultiplier = 0.55 + confidence * 1.0;
+  const widthMultiplier = 0.72 + confidence * 0.92;
   if (trimmed.length < 2) return null;
   return (
     <StrokeSegments

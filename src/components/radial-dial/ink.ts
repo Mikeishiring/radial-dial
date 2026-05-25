@@ -11,7 +11,7 @@ import type { InkPoint, Vec } from './types';
  * 9 px gives a noticeable, intentional paintbrush lag that reads as
  * deliberate ink flow rather than a stretched mouse cursor.
  */
-export const MIN_POINT_DISTANCE = 9;
+export const MIN_POINT_DISTANCE = 6;
 
 /** Hard cap on points per stroke to keep SVG cheap on long gestures. */
 export const MAX_TRAIL_POINTS = 240;
@@ -28,7 +28,7 @@ export const SLOW_VELOCITY = 0.15;
  * visibly lags behind the cursor by ~30-40ms, smoothing high-frequency
  * hand jitter and giving the gesture a deliberate, calibrated feel.
  */
-const SMOOTH_FACTOR = 0.55;
+const SMOOTH_FACTOR = 0.46;
 
 /**
  * Append a raw point to a stroke, computing its velocity and exponentially
@@ -163,7 +163,8 @@ export function applyMagneticPull(
   // Pull only kicks in past 50% of the threshold and grows linearly to 100%.
   if (dist < commitDistance * 0.5) return rawPoint;
   const t = Math.min(1, (dist - commitDistance * 0.5) / (commitDistance * 0.5));
-  const pull = t * 0.14;
+  const easedT = 1 - Math.pow(1 - t, 2);
+  const pull = easedT * 0.2;
   return {
     x: rawPoint.x + (homedTarget.x - rawPoint.x) * pull,
     y: rawPoint.y + (homedTarget.y - rawPoint.y) * pull,

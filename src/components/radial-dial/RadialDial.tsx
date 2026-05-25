@@ -7,6 +7,7 @@ import {
 } from './ink';
 import {
   AmbientRipple,
+  BacktrackRipple,
   CommitParticles,
   CommitWave,
   FirstRunHint,
@@ -200,6 +201,7 @@ import {
 import { PlanetaryTrail } from './planets';
 import {
   FrozenStrokeLayer,
+  HomingRail,
   InkMeniscus,
   LiveStrokeLayer,
   TravelingPulse,
@@ -730,6 +732,29 @@ export function RadialDial({
     return count * homedNode.share;
   }, [count, dial.homed, dial.visibleChildren]);
 
+  const homingRail = useMemo(() => {
+    if (
+      dial.phase !== 'drawing' ||
+      !dial.pointer ||
+      !dial.activeEntry ||
+      !dial.homed
+    ) {
+      return null;
+    }
+    const target = clampedChildren.find(c => c.node.id === dial.homed!.id);
+    if (!target) return null;
+    const dist = Math.hypot(
+      dial.pointer.x - dial.activeEntry.pos.x,
+      dial.pointer.y - dial.activeEntry.pos.y,
+    );
+    return {
+      from: dial.activeEntry.pos,
+      to: target.pos,
+      strength: dial.homed.strength,
+      progress: Math.max(0, Math.min(1, dist / commitDistance)),
+    };
+  }, [dial.phase, dial.pointer, dial.activeEntry, dial.homed, clampedChildren, commitDistance]);
+
   return (
     // LazyMotion loads the `domMax` feature bundle so the lightweight `m`
     // components actually animate. WITHOUT this, every `m.*` element renders
@@ -927,6 +952,9 @@ export function RadialDial({
         {/* Commit wave — radial pulse on each new commit. */}
         <CommitWave path={dial.path} theme={theme} reduceMotion={reduceMotion} />
 
+        {/* Reverse pulse — gives backtracking the same physical continuity as commits. */}
+        <BacktrackRipple path={dial.path} theme={theme} reduceMotion={reduceMotion} />
+
         {/* Settle ripples — soft water-drop ring on each commit, stacks up
             to 3. Layered with CommitWave (iris-open) for a richer landing. */}
         <SettleRipples path={dial.path} theme={theme} reduceMotion={reduceMotion} />
@@ -936,6 +964,18 @@ export function RadialDial({
 
         {/* Ink layer */}
         <svg className="absolute inset-0 h-full w-full" style={{ pointerEvents: 'none' }}>
+          <AnimatePresence>
+            {homingRail && (
+              <HomingRail
+                key="homing-rail"
+                from={homingRail.from}
+                to={homingRail.to}
+                strength={homingRail.strength}
+                progress={homingRail.progress}
+                theme={theme}
+              />
+            )}
+          </AnimatePresence>
           <AnimatePresence>
             {dial.frozenStrokes.map((stroke, i) => (
               <FrozenStrokeLayer

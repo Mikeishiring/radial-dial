@@ -123,6 +123,7 @@ export function OptionBubble({
   // the earlier translucent glass left them near-invisible on light themes.
   const glass = glassSurface(theme, { alpha: isLight ? 64 : 42, blur: 10 });
   const homedFill = `color-mix(in srgb, ${theme.paper} ${isLight ? 72 : 56}%, transparent)`;
+  const ready = homedStrength > 0.72;
   return (
     <m.div
       // ARIA: even though this fan option isn't a button (the gesture
@@ -154,6 +155,7 @@ export function OptionBubble({
               `inset 0 0 0 ${homedBorder} ${mix(theme.accent, 45 + homedStrength * 50)}`,
               `0 6px 18px ${mix(theme.accent, 6 + homedStrength * 22)}`,
               `0 0 ${20 + homedStrength * 20}px ${mix(theme.accent, homedStrength * 16)}`,
+              ready ? `0 0 0 ${2 + homedStrength * 3}px ${mix(theme.accent, 10)}` : '',
             ].join(', ')
           : [
               glass.glassShadow,
@@ -164,7 +166,7 @@ export function OptionBubble({
       }}
       initial={{ scale: 0.5, opacity: 0, x: 0, y: 0 }}
       animate={{
-        scale: 1 + homedStrength * 0.14,
+        scale: 1 + homedStrength * 0.1 + (ready ? 0.035 : 0),
         opacity: effectiveOpacity,
         x: pull.x,
         y: pull.y,
@@ -185,10 +187,25 @@ export function OptionBubble({
               // genuinely attracted to the cursor rather than lagging.
               x: { type: 'spring', stiffness: 260, damping: 24, mass: 0.5 },
               y: { type: 'spring', stiffness: 260, damping: 24, mass: 0.5 },
+              scale: { type: 'spring', stiffness: 300, damping: 20, mass: 0.58 },
               opacity: { duration: 0.42, ease: SMOOTH_OUT },
             }
       }
     >
+      {ready && !reduceMotion && (
+        <m.div
+          aria-hidden
+          className="pointer-events-none absolute"
+          style={{
+            inset: -8,
+            borderRadius: '50%',
+            border: `1px solid ${mix(theme.accent, 34)}`,
+          }}
+          initial={{ opacity: 0, scale: 0.82 }}
+          animate={{ opacity: [0, 0.42, 0], scale: [0.82, 1.08, 1.16] }}
+          transition={{ duration: 0.72, repeat: Infinity, ease: SMOOTH_OUT }}
+        />
+      )}
       {childCount > 0 && (
         <ChildCountDots count={childCount} homed={homed} theme={theme} />
       )}
