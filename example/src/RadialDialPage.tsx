@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ALL_THEMES,
+  COMMIT_DISTANCE,
   EXPO_OUT,
+  FAN_RADIUS,
   PAPER_THEME,
   RadialDial,
   glassSurface,
@@ -15,8 +17,24 @@ import type {
   RadialDialTheme,
 } from '@mikeishiring/radial-dial';
 
-type SampleId = 'interface' | 'workflow' | 'material';
+type StaticSampleId = 'interface' | 'workflow' | 'material';
+type SampleId = 'lab' | StaticSampleId;
 type EventKind = 'change' | 'complete' | 'apply';
+type ResponseMode = 'spread' | 'compress' | 'group';
+
+type DemoSettings = {
+  layers: number;
+  amount: number;
+  response: ResponseMode;
+};
+
+type DialTuning = {
+  fanRadius: number;
+  commitDistance: number;
+  settleRadius: number;
+  undoRadius: number;
+  angularTolerance: number;
+};
 
 type SampleTree = {
   id: SampleId;
@@ -24,6 +42,11 @@ type SampleTree = {
   total: number;
   countLabel: string;
   tree: DialNode;
+  settings?: DemoSettings;
+  tuning?: DialTuning;
+  layerCounts?: number[];
+  leafCount?: number;
+  responseNote?: string;
 };
 
 type EventEntry = {
@@ -32,7 +55,35 @@ type EventEntry = {
   at: string;
 };
 
-const SAMPLES: SampleTree[] = [
+const DEFAULT_SETTINGS: DemoSettings = {
+  layers: 3,
+  amount: 6,
+  response: 'spread',
+};
+
+const RESPONSE_MODES: Record<ResponseMode, { label: string; note: string }> = {
+  spread: {
+    label: 'Spread',
+    note: 'More siblings buy more radius, slower commit distance, and a tighter cone.',
+  },
+  compress: {
+    label: 'Compress',
+    note: 'More siblings keep the gesture compact, commit earlier, and use a forgiving cone.',
+  },
+  group: {
+    label: 'Group',
+    note: 'High sibling counts collapse into banks so each visible fan stays readable.',
+  },
+};
+
+const SAMPLE_OPTIONS: Array<{ id: SampleId; name: string }> = [
+  { id: 'lab', name: 'Lab' },
+  { id: 'interface', name: 'Interface' },
+  { id: 'workflow', name: 'Workflow' },
+  { id: 'material', name: 'Material' },
+];
+
+const STATIC_SAMPLES: SampleTree[] = [
   {
     id: 'interface',
     name: 'Interface',
@@ -201,6 +252,139 @@ const SAMPLES: SampleTree[] = [
   },
 ];
 
+function generatedSample(settings: DemoSettings): SampleTree {
+  const layerCounts = layerCountsFor(settings);
+  const leafCount = layerCounts.reduce((total, count) => total * count, 1);
+  const tuning = tuningFor(settings, layerCounts);
+  const mode = RESPONSE_MODES[settings.response];
+  const tree: DialNode = {
+    id: 'lab-root',
+    label: `${settings.layers} layers`,
+    children: buildLayer(settings, layerCounts, 0, []),
+  };
+
+  return {
+    id: 'lab',
+    name: 'Lab',
+    tree,
+    total: Math.max(leafCount * 96, 1),
+    countLabel: 'routes',
+    settings,
+    tuning,
+    layerCounts,
+    leafCount,
+    responseNote: mode.note,
+  };
+}
+
+function layerCountsFor(settings: DemoSettings): number[] {
+  const amount = Math.max(2, Math.min(9, settings.amount));
+  if (settings.response !== 'group') {
+    return Array.from({ length: settings.layers }, () => amount);
+  }
+
+  if (amount <= 4) {
+    return Array.from({ length: settings.layers }, () => amount);
+  }
+
+  const bankCount = Math.ceil(amount / 3);
+  const bankSize = Math.ceil(amount / bankCount);
+  return Array.from({ length: settings.layers }, (_, index) =>
+    index === 0 ? bankCount : bankSize,
+  );
+}
+
+function tuningFor(settings: DemoSettings, layerCounts: number[]): DialTuning {
+  const visibleMax = Math.max(...layerCounts);
+  if (settings.response === 'compress') {
+    const fanRadius = FAN_RADIUS - 18 + Math.min(visibleMax, 9) * 3;
+    return {
+      fanRadius,
+      commitDistance: fanRadius * 0.68,
+      settleRadius: fanRadius * 0.48,
+      undoRadius: 40,
+      angularTolerance: Math.min(Math.PI / 3.9, Math.max(Math.PI / 8.2, Math.PI / (visibleMax * 0.68))),
+    };
+  }
+
+  if (settings.response === 'group') {
+    const fanRadius = FAN_RADIUS + Math.min(22, Math.max(0, settings.amount - 4) * 5);
+    return {
+      fanRadius,
+      commitDistance: fanRadius * 0.76,
+      settleRadius: fanRadius * 0.54,
+      undoRadius: 44,
+      angularTolerance: Math.min(Math.PI / 4.3, Math.max(Math.PI / 7, Math.PI / Math.max(4.5, visibleMax * 0.82))),
+    };
+  }
+
+  const fanRadius = FAN_RADIUS + Math.max(0, visibleMax - 4) * 8;
+  return {
+    fanRadius,
+    commitDistance: fanRadius * 0.8,
+    settleRadius: fanRadius * 0.56,
+    undoRadius: 44,
+    angularTolerance: Math.min(Math.PI / 4.2, Math.max(Math.PI / 8.5, Math.PI / Math.max(4, visibleMax * 0.78))),
+  };
+}
+
+function buildLayer(
+  settings: DemoSettings,
+  layerCounts: number[],
+  layerIndex: number,
+  lineage: number[],
+): DialNode[] | undefined {
+  const count = layerCounts[layerIndex];
+  if (!count) return undefined;
+
+  return Array.from({ length: count }, (_, index) => {
+    const nextLineage = [...lineage, index + 1];
+    const label = labelFor(settings, layerIndex, index, count);
+    const children = buildLayer(settings, layerCounts, layerIndex + 1, nextLineage);
+    return {
+      id: `lab-${nextLineage.join('-')}`,
+      label,
+      icon: layerIndex === 0 ? iconForIndex(index) : undefined,
+      share: shareFor(settings, layerIndex, index, count),
+      children,
+    };
+  });
+}
+
+function labelFor(settings: DemoSettings, layerIndex: number, index: number, count: number): string {
+  if (settings.response === 'group' && settings.amount > 4 && layerIndex === 0) {
+    return `Bank ${index + 1}`;
+  }
+  const labels = ['Mode', 'Branch', 'Rule', 'Detail', 'Emit'];
+  const name = labels[layerIndex] ?? 'Layer';
+  if (count <= 4) return `${name} ${index + 1}`;
+  return `${name} ${String.fromCharCode(65 + index)}`;
+}
+
+function iconForIndex(index: number) {
+  const icons = [
+    <GridIcon key="grid" />,
+    <TransformIcon key="transform" />,
+    <InspectIcon key="inspect" />,
+    <CommitIcon key="commit" />,
+    <StackIcon key="stack" />,
+    <OrbitIcon key="orbit" />,
+  ];
+  return icons[index % icons.length];
+}
+
+function shareFor(settings: DemoSettings, layerIndex: number, index: number, count: number): number {
+  if (settings.response === 'spread') {
+    return Math.max(0.08, (1 / count) * (1.16 - index * 0.025));
+  }
+  if (settings.response === 'group') {
+    const density = layerIndex === 0 && settings.amount > 4 ? 0.94 : 1;
+    return Math.max(0.12, density / count);
+  }
+  const rank = count === 1 ? 1 : 1 - index / (count - 1);
+  return Math.max(0.08, 0.34 - layerIndex * 0.025 + rank * 0.2);
+}
+
 function countForPath(nodes: DialNode[], total: number): number {
   return nodes.reduce((n, node) => n * (node.share ?? 1), total);
 }
@@ -218,16 +402,34 @@ function useCompactLayout() {
 
 export function RadialDialPage() {
   const [theme, setTheme] = useState<RadialDialTheme>(PAPER_THEME);
-  const [sampleId, setSampleId] = useState<SampleId>('interface');
+  const [sampleId, setSampleId] = useState<SampleId>('lab');
+  const [settings, setSettings] = useState<DemoSettings>(DEFAULT_SETTINGS);
   const [payload, setPayload] = useState<DialPathPayload>({ nodes: [] });
   const [applied, setApplied] = useState<DialPathPayload | null>(null);
   const [events, setEvents] = useState<EventEntry[]>([]);
   const compact = useCompactLayout();
 
+  const labSample = useMemo(() => generatedSample(settings), [settings]);
   const sample = useMemo(
-    () => SAMPLES.find(item => item.id === sampleId) ?? SAMPLES[0],
-    [sampleId],
+    () =>
+      sampleId === 'lab'
+        ? labSample
+        : STATIC_SAMPLES.find(item => item.id === sampleId) ?? STATIC_SAMPLES[0],
+    [labSample, sampleId],
   );
+  const tuning = sample.tuning ?? {
+    fanRadius: FAN_RADIUS,
+    commitDistance: COMMIT_DISTANCE,
+    settleRadius: 108,
+    undoRadius: 44,
+    angularTolerance: Math.PI / 4.5,
+  };
+
+  const resetInteraction = () => {
+    setPayload({ nodes: [] });
+    setApplied(null);
+    setEvents([]);
+  };
 
   const pushEvent = (kind: EventKind, nextPayload: DialPathPayload) => {
     const label = nextPayload.nodes.map(node => node.label).join(' > ') || 'root';
@@ -239,9 +441,13 @@ export function RadialDialPage() {
 
   const handleSampleChange = (next: SampleId) => {
     setSampleId(next);
-    setPayload({ nodes: [] });
-    setApplied(null);
-    setEvents([]);
+    resetInteraction();
+  };
+
+  const handleSettingsChange = (patch: Partial<DemoSettings>) => {
+    setSettings(prev => ({ ...prev, ...patch }));
+    setSampleId('lab');
+    resetInteraction();
   };
 
   return (
@@ -256,18 +462,20 @@ export function RadialDialPage() {
       }}
     >
       <RadialDial
-        key={sample.id}
+        key={sample.id === 'lab' ? `lab-${settings.layers}-${settings.amount}-${settings.response}` : sample.id}
         tree={sample.tree}
         theme={theme}
         title="radial dial"
-        hint="gesture primitive for nested choices"
+        hint={sample.responseNote ?? 'gesture primitive for nested choices'}
         countLabel={sample.countLabel}
         total={sample.total}
         actionPlacement={compact ? 'path' : 'auto'}
         applyLabel="Emit"
-        fanRadius={196}
-        commitDistance={158}
-        undoRadius={44}
+        fanRadius={tuning.fanRadius}
+        commitDistance={tuning.commitDistance}
+        settleRadius={tuning.settleRadius}
+        undoRadius={tuning.undoRadius}
+        angularTolerance={tuning.angularTolerance}
         onChange={next => {
           setPayload(next);
           setApplied(null);
@@ -290,6 +498,8 @@ export function RadialDialPage() {
         applied={applied}
         events={events}
         onSampleChange={handleSampleChange}
+        settings={settings}
+        onSettingsChange={handleSettingsChange}
       />
 
       <FooterLink theme={theme} compact={compact} />
@@ -306,6 +516,8 @@ function InspectorPanel({
   applied,
   events,
   onSampleChange,
+  settings,
+  onSettingsChange,
 }: {
   compact: boolean;
   theme: RadialDialTheme;
@@ -315,6 +527,8 @@ function InspectorPanel({
   applied: DialPathPayload | null;
   events: EventEntry[];
   onSampleChange: (id: SampleId) => void;
+  settings: DemoSettings;
+  onSettingsChange: (patch: Partial<DemoSettings>) => void;
 }) {
   const isLight = theme.mode === 'light';
   const glass = glassSurface(theme, { alpha: isLight ? 62 : 42, blur: 22 });
@@ -323,6 +537,16 @@ function InspectorPanel({
   const pathText = nodes.map(node => node.label).join(' > ') || 'root';
   const payloadJson = JSON.stringify(
     {
+      ...(sample.settings
+        ? {
+            settings: {
+              layers: sample.settings.layers,
+              amount: sample.settings.amount,
+              response: sample.settings.response,
+              visibleFan: sample.layerCounts,
+            },
+          }
+        : {}),
       nodes: nodes.map(node => ({ id: node.id, label: node.label })),
       count,
     },
@@ -375,6 +599,14 @@ function InspectorPanel({
         theme={theme}
         active={sampleId}
         onChange={onSampleChange}
+      />
+
+      <StructureSettings
+        theme={theme}
+        settings={settings}
+        active={sampleId === 'lab'}
+        sample={sample}
+        onChange={onSettingsChange}
       />
 
       <div
@@ -529,6 +761,351 @@ function MetricCell({
   );
 }
 
+function StructureSettings({
+  theme,
+  settings,
+  active,
+  sample,
+  onChange,
+}: {
+  theme: RadialDialTheme;
+  settings: DemoSettings;
+  active: boolean;
+  sample: SampleTree;
+  onChange: (patch: Partial<DemoSettings>) => void;
+}) {
+  const isLight = theme.mode === 'light';
+  const layerCounts = sample.layerCounts ?? layerCountsFor(settings);
+  const tuning = sample.tuning ?? tuningFor(settings, layerCounts);
+  const leafCount = sample.leafCount ?? layerCounts.reduce((total, count) => total * count, 1);
+  const response = RESPONSE_MODES[settings.response];
+
+  return (
+    <section
+      aria-label="Structure settings"
+      style={{
+        marginTop: 12,
+        padding: 12,
+        borderRadius: 8,
+        border: `1px solid ${active ? mix(theme.accent, 28) : mix(theme.ink, isLight ? 9 : 16)}`,
+        background: active
+          ? mix(theme.accent, isLight ? 7 : 12, 'transparent')
+          : mix(theme.ink, isLight ? 3 : 8, 'transparent'),
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+        <PanelKicker theme={theme}>Structure settings</PanelKicker>
+        <span
+          style={{
+            fontFamily: theme.mono,
+            fontSize: 10,
+            color: active ? theme.accent : mix(theme.ink, isLight ? 42 : 54),
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+          }}
+        >
+          {active ? 'driving demo' : 'switches to lab'}
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+        <RangeSetting
+          theme={theme}
+          label="Layers"
+          value={settings.layers}
+          min={1}
+          max={5}
+          onChange={value => onChange({ layers: value })}
+        />
+        <RangeSetting
+          theme={theme}
+          label="Amount"
+          value={settings.amount}
+          min={2}
+          max={9}
+          onChange={value => onChange({ amount: value })}
+        />
+      </div>
+
+      <ResponseSwitcher
+        theme={theme}
+        active={settings.response}
+        onChange={responseMode => onChange({ response: responseMode })}
+      />
+
+      <div
+        style={{
+          marginTop: 10,
+          paddingTop: 10,
+          borderTop: `1px solid ${mix(theme.ink, isLight ? 8 : 14)}`,
+        }}
+      >
+        <LayerMap theme={theme} counts={layerCounts} />
+        <p
+          style={{
+            margin: '9px 0 0',
+            color: mix(theme.ink, isLight ? 58 : 68),
+            fontSize: 12,
+            lineHeight: 1.45,
+          }}
+        >
+          {response.note}
+        </p>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 6,
+            marginTop: 10,
+          }}
+        >
+          <TinyStat theme={theme} label="leaves" value={leafCount.toLocaleString('en-US')} />
+          <TinyStat theme={theme} label="fan" value={Math.round(tuning.fanRadius).toString()} />
+          <TinyStat theme={theme} label="commit" value={Math.round(tuning.commitDistance).toString()} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RangeSetting({
+  theme,
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  theme: RadialDialTheme;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  const isLight = theme.mode === 'light';
+  const setClamped = (next: number) => onChange(Math.max(min, Math.min(max, next)));
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+        <span
+          style={{
+            fontFamily: theme.mono,
+            fontSize: 10,
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            color: mix(theme.ink, isLight ? 45 : 56),
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            fontFamily: theme.mono,
+            fontSize: 12,
+            color: theme.ink,
+            fontFeatureSettings: '"tnum" 1',
+          }}
+        >
+          {value}
+        </span>
+        <span style={{ display: 'inline-flex', gap: 4 }}>
+          <button
+            type="button"
+            aria-label={`Decrease ${label}`}
+            disabled={value <= min}
+            onClick={() => setClamped(value - 1)}
+            style={stepperButtonStyle(theme)}
+          >
+            -
+          </button>
+          <button
+            type="button"
+            aria-label={`Increase ${label}`}
+            disabled={value >= max}
+            onClick={() => setClamped(value + 1)}
+            style={stepperButtonStyle(theme)}
+          >
+            +
+          </button>
+        </span>
+      </span>
+      <input
+        aria-label={label}
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={event => setClamped(Number(event.currentTarget.value))}
+        style={{
+          width: '100%',
+          accentColor: theme.accent,
+          cursor: 'pointer',
+        }}
+      />
+    </div>
+  );
+}
+
+function stepperButtonStyle(theme: RadialDialTheme): React.CSSProperties {
+  return {
+    width: 24,
+    height: 22,
+    padding: 0,
+    border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 12 : 20)}`,
+    borderRadius: 6,
+    background: mix(theme.ink, theme.mode === 'light' ? 4 : 10, 'transparent'),
+    color: theme.ink,
+    cursor: 'pointer',
+    fontFamily: theme.mono,
+    fontSize: 12,
+    lineHeight: 1,
+  };
+}
+
+function ResponseSwitcher({
+  theme,
+  active,
+  onChange,
+}: {
+  theme: RadialDialTheme;
+  active: ResponseMode;
+  onChange: (mode: ResponseMode) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Amount response"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gap: 4,
+        marginTop: 10,
+        padding: 4,
+        borderRadius: 8,
+        border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 10 : 18)}`,
+        background: mix(theme.ink, theme.mode === 'light' ? 4 : 10, 'transparent'),
+      }}
+    >
+      {(Object.keys(RESPONSE_MODES) as ResponseMode[]).map(mode => {
+        const selected = active === mode;
+        return (
+          <button
+            key={mode}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(mode)}
+            style={{
+              minWidth: 0,
+              padding: '7px 6px',
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              background: selected ? mix(theme.accent, 16) : 'transparent',
+              color: selected ? theme.accent : mix(theme.ink, theme.mode === 'light' ? 62 : 68),
+              fontFamily: theme.mono,
+              fontSize: 9,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+            }}
+          >
+            {RESPONSE_MODES[mode].label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function LayerMap({ theme, counts }: { theme: RadialDialTheme; counts: number[] }) {
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      {counts.map((count, index) => (
+        <div
+          key={`layer-${index}`}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '44px 1fr 24px',
+            alignItems: 'center',
+            gap: 8,
+            fontFamily: theme.mono,
+            fontSize: 10,
+            color: mix(theme.ink, theme.mode === 'light' ? 52 : 62),
+          }}
+        >
+          <span>L{index + 1}</span>
+          <span style={{ display: 'flex', gap: 3, minWidth: 0 }}>
+            {Array.from({ length: count }, (_, dotIndex) => (
+              <span
+                key={dotIndex}
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: dotIndex % 3 === 0 ? 2 : 999,
+                  background: dotIndex === 0 ? theme.accent : mix(theme.ink, theme.mode === 'light' ? 18 : 30),
+                }}
+              />
+            ))}
+          </span>
+          <span style={{ textAlign: 'right', fontFeatureSettings: '"tnum" 1' }}>{count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TinyStat({
+  theme,
+  label,
+  value,
+}: {
+  theme: RadialDialTheme;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        padding: '7px 8px',
+        borderRadius: 6,
+        background: mix(theme.ink, theme.mode === 'light' ? 4 : 10, 'transparent'),
+        border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 8 : 14)}`,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: theme.mono,
+          fontSize: 8,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: mix(theme.ink, theme.mode === 'light' ? 42 : 54),
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: 3,
+          fontFamily: theme.mono,
+          fontSize: 12,
+          color: theme.ink,
+          fontFeatureSettings: '"tnum" 1',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function SegmentedSamples({
   theme,
   active,
@@ -544,7 +1121,7 @@ function SegmentedSamples({
       aria-label="Sample tree"
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
         gap: 4,
         padding: 4,
         borderRadius: 8,
@@ -552,7 +1129,7 @@ function SegmentedSamples({
         background: mix(theme.ink, theme.mode === 'light' ? 4 : 10, 'transparent'),
       }}
     >
-      {SAMPLES.map(sample => {
+      {SAMPLE_OPTIONS.map(sample => {
         const selected = active === sample.id;
         return (
           <button

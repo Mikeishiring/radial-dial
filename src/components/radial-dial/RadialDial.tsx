@@ -508,6 +508,22 @@ export function RadialDial({
     const positions = placeChildren(idleAnchor, null, children.length, fanRadius);
     return children.map((node, i) => ({ node, pos: positions[i] }));
   }, [dial.phase, tree, idleAnchor, fanRadius]);
+
+  const keyboardOptions = useMemo(() => {
+    if (dial.phase === 'committed' && dial.activeEntry?.node.children?.length) {
+      return clampedChildren;
+    }
+    return persistentOptions ?? [];
+  }, [dial.phase, dial.activeEntry, clampedChildren, persistentOptions]);
+
+  const keyboardAnchor = dial.activeEntry?.pos ?? idleAnchor;
+
+  useEffect(() => {
+    setFocusedOptionIndex(prev =>
+      prev !== null && prev >= keyboardOptions.length ? null : prev,
+    );
+  }, [keyboardOptions.length]);
+
   // Keyboard handler — Enter applies (committed) OR commits focused option.
   // ArrowLeft/Right cycle the focused option clockwise/counter-clockwise.
   // ArrowUp focuses the option closest to 12 o'clock.
@@ -520,10 +536,7 @@ export function RadialDial({
       // Don't capture arrow keys / enter mid-drag — drag owns input.
       if (dial.phase === 'drawing') return;
 
-      const options =
-        dial.phase === 'committed' && dial.activeEntry?.node.children?.length
-          ? clampedChildren
-          : persistentOptions ?? [];
+      const options = keyboardOptions;
       const len = options.length;
 
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -542,12 +555,11 @@ export function RadialDial({
         e.preventDefault();
         // Pick the option whose position is closest to the 12 o'clock
         // direction (i.e. smallest |x - anchor.x| with y < anchor.y).
-        const anchor = dial.activeEntry?.pos ?? idleAnchor;
         let best = 0;
         let bestScore = Infinity;
         options.forEach((opt, i) => {
-          const dx = Math.abs(opt.pos.x - anchor.x);
-          const dy = opt.pos.y - anchor.y;
+          const dx = Math.abs(opt.pos.x - keyboardAnchor.x);
+          const dy = opt.pos.y - keyboardAnchor.y;
           // Score: horizontal distance + heavy penalty for being below.
           const score = dx + (dy > 0 ? 1000 + dy : dy * -0.5);
           if (score < bestScore) {
@@ -563,13 +575,11 @@ export function RadialDial({
       // drilling, idle centre otherwise). Must match the mouse path, which
       // passes idleAnchor, NOT the option's off-centre fan position; passing
       // the latter would plant the root off-centre on the first commit.
-      const commitAnchor = dial.activeEntry?.pos ?? idleAnchor;
-
       if (e.key === 'ArrowDown') {
         if (focusedOptionIndex === null || len === 0) return;
         e.preventDefault();
         const opt = options[focusedOptionIndex];
-        if (opt) dial.selectChild(opt.node, commitAnchor);
+        if (opt) dial.selectChild(opt.node, keyboardAnchor);
         setFocusedOptionIndex(null);
         return;
       }
@@ -579,7 +589,7 @@ export function RadialDial({
         if (focusedOptionIndex !== null && len > 0) {
           e.preventDefault();
           const opt = options[focusedOptionIndex];
-          if (opt) dial.selectChild(opt.node, commitAnchor);
+          if (opt) dial.selectChild(opt.node, keyboardAnchor);
           setFocusedOptionIndex(null);
           return;
         }
@@ -594,9 +604,8 @@ export function RadialDial({
       dial,
       onApply,
       applyCurrent,
-      persistentOptions,
-      clampedChildren,
-      idleAnchor,
+      keyboardOptions,
+      keyboardAnchor,
       focusedOptionIndex,
     ],
   );
@@ -1077,8 +1086,8 @@ export function RadialDial({
             but pointer users see the cleaner hold-first surface. */}
         <AnimatePresence>
           {focusedOptionIndex !== null &&
-            persistentOptions &&
-            persistentOptions.map((c, i) => (
+            keyboardOptions.length > 0 &&
+            keyboardOptions.map((c, i) => (
               <IdleGhost
                 key={`ghost-${c.node.id}`}
                 pos={c.pos}
@@ -1087,7 +1096,7 @@ export function RadialDial({
                 index={i}
                 proximity={focusedOptionIndex === i ? 1 : 0.18}
                 theme={theme}
-                onSelect={() => dial.selectChild(c.node, idleAnchor)}
+                onSelect={() => dial.selectChild(c.node, keyboardAnchor)}
                 breathing={focusedOptionIndex === i}
                 reduceMotion={reduceMotion}
                 focused={focusedOptionIndex === i}

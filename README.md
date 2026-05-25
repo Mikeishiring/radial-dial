@@ -181,6 +181,8 @@ npm run deploy:demo  # deploys the demo to Cloudflare Pages project radial-dial
 
 The demo is an interaction lab, not a product mock: it shows neutral sample trees, live payload JSON, event history, and count/depth readouts so the primitive can be evaluated without borrowing a host product domain.
 
+The default Lab sample also includes structure controls for stress-testing depth and density: choose the number of layers, sibling amount, and whether high counts should spread wider, compress into a tighter gesture, or group into readable banks. The panel shows the resulting layer map and derived tuning values (`fanRadius`, commit distance, and leaf count) next to the live payload.
+
 ## Status & roadmap
 
 `v0.1.0` — first public extraction from a host app. API stable enough to use, but not yet 1.0.

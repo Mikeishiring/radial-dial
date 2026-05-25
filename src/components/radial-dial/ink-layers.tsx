@@ -33,6 +33,15 @@ import type { FrozenStroke, InkPoint, RadialDialTheme, Vec } from './types';
  * all path math from `ink.ts`. No engine state coupling.
  */
 
+const MAX_LIVE_INK_POINTS = 96;
+
+function sampleInkPoints(points: InkPoint[], maxPoints: number): InkPoint[] {
+  if (points.length <= maxPoints) return points;
+  const last = points.length - 1;
+  const step = last / (maxPoints - 1);
+  return Array.from({ length: maxPoints }, (_, i) => points[Math.round(i * step)]);
+}
+
 // =============================================================================
 // FrozenStrokeLayer — a single committed stroke. Combines settle animation,
 // age-fade through path order, draw-in overlay, and ink-drop pool at end.
@@ -276,7 +285,9 @@ export function HomingRail({
     y: to.y - uy * SETTLED_TRIM_RADIUS,
   };
   const d = `M${start.x.toFixed(1)},${start.y.toFixed(1)} L${end.x.toFixed(1)},${end.y.toFixed(1)}`;
-  const opacity = Math.max(0, Math.min(1, (strength - 0.14) / 0.86)) * 0.7;
+  const strengthGate = Math.max(0, Math.min(1, (strength - 0.22) / 0.78));
+  const progressGate = Math.max(0, Math.min(1, (progress - 0.42) / 0.58));
+  const opacity = strengthGate * progressGate * 0.66;
   const dash = 0.08 + Math.max(0, Math.min(1, progress)) * 0.16;
 
   if (opacity <= 0.02) return null;
@@ -362,11 +373,52 @@ function StrokeSegments({
   widthMultiplier: number;
   live?: boolean;
 }) {
+  const path = useMemo(() => (!live ? inkFullPath(points) : ''), [points, live]);
+  const renderedPoints = useMemo(
+    () => (live ? sampleInkPoints(points, MAX_LIVE_INK_POINTS) : points),
+    [points, live],
+  );
   const segments = useMemo(
-    () => inkSegments(points, INK_BASE_WIDTH * widthMultiplier),
-    [points, widthMultiplier],
+    () => (live ? inkSegments(renderedPoints, INK_BASE_WIDTH * widthMultiplier) : []),
+    [renderedPoints, widthMultiplier, live],
   );
   const baseOpacity = live ? 0.85 : 1;
+
+  if (!live && path) {
+    const width = INK_BASE_WIDTH * widthMultiplier;
+    return (
+      <g style={{ pointerEvents: 'none' }}>
+        <path
+          d={path}
+          fill="none"
+          stroke={theme.ink}
+          strokeWidth={width * 3.6}
+          strokeOpacity={0.05}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d={path}
+          fill="none"
+          stroke={theme.ink}
+          strokeWidth={width * 1.8}
+          strokeOpacity={0.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d={path}
+          fill="none"
+          stroke={theme.ink}
+          strokeWidth={width}
+          strokeOpacity={0.9}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+    );
+  }
+
   return (
     <g style={{ pointerEvents: 'none' }}>
       {segments.map((seg, i) => (
