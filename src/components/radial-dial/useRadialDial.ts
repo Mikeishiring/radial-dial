@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { appendPoint } from './ink';
 import type {
   DialNode,
+  DialFlowMode,
   DialPathEntry,
   DialPathPayload,
   DialPhase,
@@ -24,6 +25,8 @@ import type {
 
 type Options = {
   tree: DialNode;
+  /** Geometry mode for child placement. */
+  flowMode?: DialFlowMode;
   /** Px the cursor must travel from active before the closest child commits. */
   commitDistance?: number;
   /** Hysteresis re-arm threshold (must escape this radius). */
@@ -46,6 +49,7 @@ const DEFAULTS = {
   undoRadius: 44,
   angularTolerance: Math.PI / 4.5,
   fanRadius: 196,
+  flowMode: 'radial' as DialFlowMode,
 };
 
 /**
@@ -64,6 +68,7 @@ export function useRadialDial({
   undoRadius = DEFAULTS.undoRadius,
   angularTolerance = DEFAULTS.angularTolerance,
   fanRadius = DEFAULTS.fanRadius,
+  flowMode = DEFAULTS.flowMode,
   onChange,
   onComplete,
 }: Options) {
@@ -86,7 +91,9 @@ export function useRadialDial({
   const pathRef = useRef<DialPathEntry[]>([]);
   const phaseRef = useRef<DialPhase>('idle');
   const fanRadiusRef = useRef(fanRadius);
+  const flowModeRef = useRef<DialFlowMode>(flowMode);
   fanRadiusRef.current = fanRadius;
+  flowModeRef.current = flowMode;
   // Force re-render when liveStroke ref changes; avoids state churn at 120Hz.
   const [, bumpRender] = useReducer((n: number) => n + 1, 0);
 
@@ -101,9 +108,10 @@ export function useRadialDial({
       grandparentPos,
       activeEntry.node.children.length,
       fanRadius,
+      flowMode,
     );
     return activeEntry.node.children.map((node, i) => ({ node, pos: positions[i] }));
-  }, [activeEntry, grandparentPos, fanRadius]);
+  }, [activeEntry, grandparentPos, fanRadius, flowMode]);
 
   const homed: { id: string; strength: number; targetPos: Vec } | null = useMemo(() => {
     if (phase !== 'drawing' || !pointer || !activeEntry || visibleChildren.length === 0) return null;
@@ -255,7 +263,13 @@ export function useRadialDial({
       // Compute children of the live active inline — visibleChildren state
       // is also subject to the same render lag.
       const liveGrandparent = livePath.length >= 2 ? livePath[livePath.length - 2].pos : null;
-      const liveChildPositions = placeChildren(liveActive.pos, liveGrandparent, children.length, fanRadiusRef.current);
+      const liveChildPositions = placeChildren(
+        liveActive.pos,
+        liveGrandparent,
+        children.length,
+        fanRadiusRef.current,
+        flowModeRef.current,
+      );
       const liveChildren = children.map((node, i) => ({ node, pos: liveChildPositions[i] }));
 
       const pa = Math.atan2(dy, dx);
@@ -325,7 +339,13 @@ export function useRadialDial({
       const active = livePath[0];
       const children = active?.node.children;
       if (active && children?.length) {
-        const positions = placeChildren(active.pos, null, children.length, fanRadiusRef.current);
+        const positions = placeChildren(
+          active.pos,
+          null,
+          children.length,
+          fanRadiusRef.current,
+          flowModeRef.current,
+        );
         let bestIdx = -1;
         let bestDist = Infinity;
         for (let i = 0; i < positions.length; i++) {
@@ -423,7 +443,7 @@ export function useRadialDial({
    * we synthesise the press-then-commit transition).
    */
   const selectChild = useCallback(
-    (childNode: DialNode, fromAnchor?: Vec) => {
+    (childNode: DialNode, fromAnchor?: Vec, targetPos?: Vec) => {
       let livePath = pathRef.current;
       const now = performance.now();
 
@@ -453,8 +473,9 @@ export function useRadialDial({
         liveGrandparent,
         children.length,
         fanRadiusRef.current,
+        flowModeRef.current,
       );
-      const newPos = positions[childIdx];
+      const newPos = targetPos ?? positions[childIdx];
 
       // Synthesize a stroke between previous active and new active that
       // feels DRAWN, not teleported. Three ingredients (Issue #24):
@@ -581,20 +602,28 @@ export function useRadialDial({
 
 /**
  * Place children radially around their parent.
- * - Root level (no grandparent): top / right / bottom / left for 4 children;
- *   evenly distributed for other counts. Up-first so the eye lands on Role.
- * - Deeper levels: 153° forward fan away from the grandparent direction.
+ * - Root level (no grandparent): evenly distributed, but the ring is rotated
+ *   by a HALF-STEP so no option sits at dead top-centre (where the count
+ *   readout lives) or dead bottom (where the caption lives). For 4 options
+ *   this yields a clean diagonal X (NE/SE/SW/NW) that clears all page chrome.
+ * - Deeper levels: forward fan away from the grandparent direction.
  */
 export function placeChildren(
   parent: Vec,
   grandparent: Vec | null,
   count: number,
   radius: number,
+  flowMode: DialFlowMode = 'radial',
 ): Vec[] {
   if (count === 0) return [];
+  if (flowMode !== 'radial') {
+    return placeChildrenInFlow(parent, count, radius, flowMode);
+  }
   if (!grandparent) {
-    const start = -Math.PI / 2;
     const step = (Math.PI * 2) / count;
+    // Half-step rotation off the 12-o'clock axis keeps the top slot clear for
+    // the centred count readout (and the bottom slot clear for the caption).
+    const start = -Math.PI / 2 + step / 2;
     return Array.from({ length: count }, (_, i) => {
       const a = start + i * step;
       return { x: parent.x + Math.cos(a) * radius, y: parent.y + Math.sin(a) * radius };
@@ -602,6 +631,27 @@ export function placeChildren(
   }
   const baseAngle = Math.atan2(parent.y - grandparent.y, parent.x - grandparent.x);
   const spread = Math.PI * 0.85;
+  const start = count === 1 ? baseAngle : baseAngle - spread / 2;
+  const step = count === 1 ? 0 : spread / (count - 1);
+  return Array.from({ length: count }, (_, i) => {
+    const a = start + i * step;
+    return { x: parent.x + Math.cos(a) * radius, y: parent.y + Math.sin(a) * radius };
+  });
+}
+
+function placeChildrenInFlow(
+  parent: Vec,
+  count: number,
+  radius: number,
+  flowMode: Exclude<DialFlowMode, 'radial'>,
+): Vec[] {
+  const baseAngle =
+    flowMode === 'right-flow'
+      ? 0
+      : flowMode === 'left-flow'
+        ? Math.PI
+        : Math.PI / 2;
+  const spread = Math.min(Math.PI * 0.55, Math.max(0, (count - 1) * Math.PI * 0.18));
   const start = count === 1 ? baseAngle : baseAngle - spread / 2;
   const step = count === 1 ? 0 : spread / (count - 1);
   return Array.from({ length: count }, (_, i) => {

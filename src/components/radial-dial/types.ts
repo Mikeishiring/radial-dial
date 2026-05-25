@@ -57,6 +57,9 @@ export type RadialDialTheme = {
   mode: 'light' | 'dark';
 };
 
+/** How child options are arranged as the user walks the hierarchy. */
+export type DialFlowMode = 'radial' | 'right-flow' | 'left-flow' | 'down-flow';
+
 /** Where the dial is in its lifecycle. */
 export type DialPhase = 'idle' | 'drawing' | 'committed';
 

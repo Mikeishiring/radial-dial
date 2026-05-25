@@ -25,6 +25,7 @@ export {
 
 export type {
   DialNode,
+  DialFlowMode,
   DialPathEntry,
   DialPathPayload,
   DialPhase,

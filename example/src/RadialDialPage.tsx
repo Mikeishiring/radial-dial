@@ -10,6 +10,7 @@ import {
   SMOOTH_OUT,
 } from '@mikeishiring/radial-dial';
 import type {
+  DialFlowMode,
   DialNode,
   DialPathPayload,
   RadialDialTheme,
@@ -121,13 +122,46 @@ const TREE: DialNode = {
 
 const TOTAL_JOBS = 28_400;
 
+const FLOW_MODES: Array<{
+  id: DialFlowMode;
+  label: string;
+  cue: string;
+}> = [
+  { id: 'right-flow', label: 'Right', cue: 'left anchor' },
+  { id: 'radial', label: 'Orbit', cue: 'compass' },
+  { id: 'left-flow', label: 'Left', cue: 'right anchor' },
+  { id: 'down-flow', label: 'Stack', cue: 'top anchor' },
+];
+
+const SCENARIOS = [
+  ['Role', 'Engineering', 'Frontend'],
+  ['Salary', '$150–200k'],
+  ['Stage', 'Series A'],
+  ['Seniority', 'Staff+'],
+];
+
+type FlowEvent = 'start' | 'choose' | 'refine' | 'change' | 'backtrack' | 'apply' | 'clear';
+
 // Compute the running count by multiplying each node's share down the path.
 function countForPath(nodes: DialNode[]): number {
   return nodes.reduce((n, node) => n * (node.share ?? 1), TOTAL_JOBS);
 }
 
+function flowEventFor(prev: DialNode[], next: DialNode[]): FlowEvent {
+  if (next.length === 0) return 'clear';
+  if (prev.length === 0) return 'start';
+  if (next.length < prev.length) return 'backtrack';
+  if (next.length === prev.length && next[next.length - 1]?.id !== prev[prev.length - 1]?.id) {
+    return 'change';
+  }
+  return 'refine';
+}
+
 export function RadialDialPage() {
   const [theme, setTheme] = useState<RadialDialTheme>(PAPER_THEME);
+  const [flowMode, setFlowMode] = useState<DialFlowMode>('right-flow');
+  const [currentPath, setCurrentPath] = useState<DialNode[]>([]);
+  const [flowEvent, setFlowEvent] = useState<FlowEvent>('clear');
   // The last-applied payload — shown in a toast that auto-dismisses.
   const [lastApplied, setLastApplied] = useState<DialPathPayload | null>(null);
   // When the user drills all the way to a leaf (a node with no children),
@@ -151,12 +185,17 @@ export function RadialDialPage() {
         hint="press, draw a line, release."
         countLabel="jobs"
         total={TOTAL_JOBS}
+        flowMode={flowMode}
         onChange={({ nodes }: DialPathPayload) => {
           // Fired on every commit / undo as you drill through levels. When
           // the deepest node is a LEAF (no children), you've reached the end
           // — open the styled preview. Otherwise keep it closed.
           const last = nodes[nodes.length - 1];
           const reachedLeaf = !!last && !last.children?.length;
+          setCurrentPath(prev => {
+            setFlowEvent(flowEventFor(prev, nodes));
+            return nodes;
+          });
           setLeafPath(reachedLeaf ? nodes : null);
         }}
         onComplete={({ nodes }: DialPathPayload) => {
@@ -170,19 +209,35 @@ export function RadialDialPage() {
         }}
         onApply={(payload: DialPathPayload) => {
           // Explicit "apply" — slide toast in, auto-dismiss after 5s.
+          setFlowEvent('apply');
           setLastApplied(payload);
           window.setTimeout(() => {
             setLastApplied(prev => (prev === payload ? null : prev));
           }, 5000);
         }}
         applyLabel="APPLY"
-        toolbar={<ThemeSwitcher theme={theme} onChange={setTheme} />}
+        toolbar={
+          <DemoToolbar
+            theme={theme}
+            flowMode={flowMode}
+            onFlowModeChange={setFlowMode}
+            onThemeChange={setTheme}
+          />
+        }
       />
 
       {/* Intro card — bottom-left, fades to translucent on idle to stay
           out of the way. The dial's own title sits top-left so this gives
           the user something to read while figuring out the gesture. */}
       <IntroCard theme={theme} />
+
+      <FlowMapPanel
+        theme={theme}
+        flowMode={flowMode}
+        currentPath={currentPath}
+        lastApplied={lastApplied}
+        flowEvent={flowEvent}
+      />
 
       {/* Styled results preview — slides in from the right when you drill all
           the way to a leaf. This is "the page opening up" at the end of the
@@ -208,6 +263,283 @@ export function RadialDialPage() {
       {/* Footer link to the repo — bottom-right, very small. */}
       <FooterLink theme={theme} />
     </div>
+  );
+}
+
+function DemoToolbar({
+  theme,
+  flowMode,
+  onFlowModeChange,
+  onThemeChange,
+}: {
+  theme: RadialDialTheme;
+  flowMode: DialFlowMode;
+  onFlowModeChange: (mode: DialFlowMode) => void;
+  onThemeChange: (theme: RadialDialTheme) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <FlowModeSwitcher theme={theme} value={flowMode} onChange={onFlowModeChange} />
+      <ThemeSwitcher theme={theme} onChange={onThemeChange} />
+    </div>
+  );
+}
+
+function FlowModeSwitcher({
+  theme,
+  value,
+  onChange,
+}: {
+  theme: RadialDialTheme;
+  value: DialFlowMode;
+  onChange: (mode: DialFlowMode) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Option flow"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        position: 'relative',
+        padding: 3,
+        gap: 2,
+        background: mix(theme.ink, theme.mode === 'light' ? 4 : 8, theme.paper),
+        border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 10 : 18)}`,
+        borderRadius: 10,
+        fontFamily: theme.mono,
+        fontSize: 9,
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase',
+      }}
+    >
+      {FLOW_MODES.map(mode => {
+        const active = mode.id === value;
+        return (
+          <motion.button
+            key={mode.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(mode.id)}
+            aria-label={`${mode.label} option flow, ${mode.cue}`}
+            whileTap={{ scale: 0.94 }}
+            transition={{ duration: 0.1 }}
+            style={{
+              position: 'relative',
+              padding: '5px 9px',
+              borderRadius: 7,
+              background: 'transparent',
+              color: active ? theme.accent : mix(theme.ink, 58),
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            {active && (
+              <motion.span
+                layoutId="flow-mode-indicator"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  borderRadius: 7,
+                  background: mix(theme.accent, 14),
+                  boxShadow: `inset 0 0 0 1px ${mix(theme.accent, 28)}`,
+                }}
+                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+              />
+            )}
+            <span style={{ position: 'relative', zIndex: 1 }}>{mode.label}</span>
+          </motion.button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FlowMapPanel({
+  theme,
+  flowMode,
+  currentPath,
+  lastApplied,
+  flowEvent,
+}: {
+  theme: RadialDialTheme;
+  flowMode: DialFlowMode;
+  currentPath: DialNode[];
+  lastApplied: DialPathPayload | null;
+  flowEvent: FlowEvent;
+}) {
+  const isLight = theme.mode === 'light';
+  const activePath = currentPath.map(n => n.label);
+  const stageLabels = [
+    { id: 'choose', label: 'Choose' },
+    { id: 'refine', label: 'Refine' },
+    { id: 'backtrack', label: 'Backtrack' },
+    { id: 'apply', label: 'Apply' },
+  ];
+  const eventLabel = {
+    start: 'Started',
+    choose: 'Changed',
+    refine: 'Refined',
+    change: 'Changed',
+    backtrack: 'Backtracked',
+    apply: 'Applied',
+    clear: 'Idle',
+  }[flowEvent];
+
+  return (
+    <motion.aside
+      initial={{ opacity: 0, x: -12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.34, ease: EXPO_OUT }}
+      style={{
+        position: 'absolute',
+        left: 28,
+        top: 92,
+        zIndex: 27,
+        width: 292,
+        padding: 16,
+        borderRadius: 10,
+        background: `color-mix(in srgb, ${theme.paper} ${isLight ? 78 : 68}%, transparent)`,
+        border: `1px solid ${mix(theme.ink, isLight ? 10 : 18)}`,
+        boxShadow: `0 14px 38px ${mix(theme.ink, isLight ? 9 : 28)}`,
+        backdropFilter: 'blur(18px) saturate(135%)',
+        WebkitBackdropFilter: 'blur(18px) saturate(135%)',
+        pointerEvents: 'none',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginBottom: 12,
+          fontFamily: theme.mono,
+          textTransform: 'uppercase',
+          letterSpacing: '0.16em',
+          fontSize: 10,
+          color: mix(theme.ink, isLight ? 46 : 58),
+        }}
+      >
+        <span>Flow map</span>
+        <span style={{ color: theme.accent }}>{eventLabel}</span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 14 }}>
+        {stageLabels.map((stage, i) => {
+          const active =
+            (stage.id === 'choose' && currentPath.length > 0) ||
+            (stage.id === 'refine' && currentPath.length > 1) ||
+            (stage.id === 'backtrack' && flowEvent === 'backtrack') ||
+            (stage.id === 'apply' && !!lastApplied);
+          return (
+            <div
+              key={stage.id}
+              style={{
+                minHeight: 44,
+                padding: '7px 6px',
+                borderRadius: 8,
+                background: active ? mix(theme.accent, 12) : mix(theme.ink, isLight ? 4 : 8, 'transparent'),
+                border: `1px solid ${active ? mix(theme.accent, 30) : mix(theme.ink, isLight ? 9 : 16)}`,
+                color: active ? theme.accent : mix(theme.ink, isLight ? 48 : 56),
+                fontFamily: theme.mono,
+                fontSize: 9,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                position: 'relative',
+              }}
+            >
+              {i > 0 && (
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    left: -7,
+                    top: '50%',
+                    width: 7,
+                    height: 1,
+                    background: mix(theme.ink, isLight ? 14 : 20),
+                  }}
+                />
+              )}
+              {stage.label}
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          minHeight: 52,
+          padding: '10px 12px',
+          borderRadius: 8,
+          background: mix(theme.ink, isLight ? 4 : 8, 'transparent'),
+          border: `1px solid ${mix(theme.ink, isLight ? 9 : 16)}`,
+          marginBottom: 12,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: theme.mono,
+            fontSize: 9,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: mix(theme.ink, isLight ? 40 : 52),
+            marginBottom: 5,
+          }}
+        >
+          Current path
+        </div>
+        <div
+          style={{
+            fontFamily: theme.serif,
+            fontStyle: 'italic',
+            fontSize: 15,
+            lineHeight: 1.35,
+            color: activePath.length ? theme.ink : mix(theme.ink, isLight ? 45 : 55),
+          }}
+        >
+          {activePath.length ? activePath.join(' › ') : `${FLOW_MODES.find(f => f.id === flowMode)?.cue ?? 'ready'}`}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {SCENARIOS.map(parts => {
+          const active = parts.every((part, i) => activePath[i] === part);
+          return (
+            <div
+              key={parts.join('-')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                minHeight: 28,
+                padding: '5px 8px',
+                borderRadius: 7,
+                background: active ? mix(theme.accent, 10) : 'transparent',
+                color: active ? theme.accent : mix(theme.ink, isLight ? 56 : 64),
+                fontFamily: theme.mono,
+                fontSize: 10,
+                fontFeatureSettings: '"tnum" 1',
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {parts.join(' / ')}
+              </span>
+              <span style={{ color: active ? theme.accent : mix(theme.ink, isLight ? 32 : 42) }}>
+                {active ? 'live' : 'test'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </motion.aside>
   );
 }
 
@@ -655,13 +987,15 @@ function ThemeSwitcher({
       {ALL_THEMES.map((t: RadialDialTheme) => {
         const active = t.name === theme.name;
         return (
-          <button
+          <motion.button
             key={t.name}
             type="button"
             role="radio"
             aria-checked={active}
             onClick={() => onChange(t)}
             aria-label={`Switch to ${t.name} theme`}
+            whileTap={{ scale: 0.94 }}
+            transition={{ duration: 0.1 }}
             style={{
               position: 'relative',
               padding: '4px 10px',
@@ -670,7 +1004,6 @@ function ThemeSwitcher({
               color: active ? theme.accent : mix(theme.ink, 58),
               border: 'none',
               cursor: 'pointer',
-              transition: 'color 220ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
           >
             {/* Sliding indicator — shared layoutId means Framer animates it
@@ -688,8 +1021,10 @@ function ThemeSwitcher({
                 transition={{ type: 'spring', stiffness: 420, damping: 34 }}
               />
             )}
-            <span style={{ position: 'relative', zIndex: 1 }}>{t.name}</span>
-          </button>
+            <span style={{ position: 'relative', zIndex: 1, transition: 'color 220ms cubic-bezier(0.22,1,0.36,1)' }}>
+              {t.name}
+            </span>
+          </motion.button>
         );
       })}
     </div>

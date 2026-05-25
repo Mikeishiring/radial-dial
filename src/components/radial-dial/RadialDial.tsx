@@ -92,6 +92,38 @@ function parallaxLayer(depth: number, zIndex: number): React.CSSProperties {
     willChange: 'transform',
   };
 }
+
+function firstRunHintTarget(
+  anchor: Vec,
+  radius: number,
+  flowMode: DialFlowMode,
+): Vec {
+  if (flowMode === 'right-flow') return { x: anchor.x + radius * 0.7, y: anchor.y };
+  if (flowMode === 'left-flow') return { x: anchor.x - radius * 0.7, y: anchor.y };
+  if (flowMode === 'down-flow') return { x: anchor.x, y: anchor.y + radius * 0.7 };
+  return { x: anchor.x, y: anchor.y - radius * 0.7 };
+}
+
+function fitPositionsToStage(
+  positions: Vec[],
+  stageSize: { w: number; h: number },
+  margin: number,
+): Vec[] {
+  if (positions.length === 0 || stageSize.w === 0 || stageSize.h === 0) return positions;
+  const xs = positions.map(p => p.x);
+  const ys = positions.map(p => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  let dx = 0;
+  let dy = 0;
+  if (minX < margin) dx = margin - minX;
+  else if (maxX > stageSize.w - margin) dx = stageSize.w - margin - maxX;
+  if (minY < margin) dy = margin - minY;
+  else if (maxY > stageSize.h - margin) dy = stageSize.h - margin - maxY;
+  return positions.map(p => ({ x: p.x + dx, y: p.y + dy }));
+}
 import {
   ActiveBubble,
   CursorHalo,
@@ -116,6 +148,7 @@ import {
 } from './useRadialDial';
 import type {
   DialNode,
+  DialFlowMode,
   DialPathPayload,
   RadialDialTheme,
   Vec,
@@ -148,6 +181,11 @@ export type RadialDialProps = {
   total?: number;
   /** Render-prop slot for additional UI in the top-right toolbar area. */
   toolbar?: React.ReactNode;
+  /**
+   * Child placement strategy. `right-flow` anchors the root left and lets each
+   * level open to the right; useful for test benches and left-to-right tools.
+   */
+  flowMode?: DialFlowMode;
   /** Fired on every commit/undo. */
   onChange?: (payload: DialPathPayload) => void;
   /** Fired on release if any commits exist. */
@@ -171,6 +209,7 @@ export function RadialDial({
   countLabel = 'jobs',
   total,
   toolbar,
+  flowMode = 'radial',
   onChange,
   onComplete,
   onApply,
@@ -228,11 +267,13 @@ export function RadialDial({
   // Stays proportional to the visible bubble. (Bubble diameter itself
   // is unscaled for now — it's a leaf-component import, not a prop.)
   const edgePadding = (OPTION_DIAMETER / 2) * Math.max(stageScale, 0.7) + 8;
+  const restingOptionPadding = stageSize.w >= 700 ? edgePadding + 118 : edgePadding + 44;
 
   const dial = useRadialDial({
     tree,
     commitDistance,
     fanRadius,
+    flowMode,
     onChange,
     onComplete,
   });
@@ -272,8 +313,20 @@ export function RadialDial({
   // Idle root sits slightly above centre on tall screens, in thumb zone on mobile.
   const idleAnchor: Vec = useMemo(() => {
     const isMobile = stageSize.w < 640;
+    if (flowMode === 'right-flow') {
+      return {
+        x: isMobile ? stageSize.w * 0.34 : Math.max(stageSize.w * 0.34, 384),
+        y: stageSize.h * 0.5,
+      };
+    }
+    if (flowMode === 'left-flow') {
+      return { x: isMobile ? stageSize.w * 0.66 : stageSize.w * 0.72, y: stageSize.h * 0.5 };
+    }
+    if (flowMode === 'down-flow') {
+      return { x: stageSize.w / 2, y: isMobile ? stageSize.h * 0.32 : stageSize.h * 0.28 };
+    }
     return { x: stageSize.w / 2, y: isMobile ? stageSize.h * 0.62 : stageSize.h * 0.5 };
-  }, [stageSize]);
+  }, [stageSize, flowMode]);
 
   // Cursor anchor for the radial vignette — follows active or sits on idle.
   const anchor = dial.activeEntry?.pos ?? idleAnchor;
@@ -363,19 +416,42 @@ export function RadialDial({
     setFocusedOptionIndex(null);
   }, [dial.phase, dial.path.length]);
 
-  // Idle menu hints — the level-1 options shown faintly around the centred
-  // root ONLY at idle. They preview "here's the top of the menu". During a
-  // gesture the real OptionBubble fan takes over; after a commit you see the
-  // result (planet trail + readout), and the next press re-opens this menu
-  // fresh from the root. Showing these only at idle (not committed) is what
-  // stops stale option circles from accumulating between selections.
+  // Resting options — at idle, show level-1 choices around the root. After a
+  // commit, show the current node's children so click/tap users can refine
+  // multiple levels without needing an expert drag-through gesture.
   const persistentOptions = useMemo(() => {
-    if (dial.phase !== 'idle') return null;
-    const children = tree.children;
+    if (dial.phase !== 'idle' && dial.phase !== 'committed') return null;
+    const anchorForOptions = dial.phase === 'idle' ? idleAnchor : dial.activeEntry?.pos;
+    const children = dial.phase === 'idle'
+      ? tree.children
+      : dial.activeEntry?.node.children;
+    const grandparentForOptions = dial.phase === 'idle'
+      ? null
+      : dial.path.length >= 2
+        ? dial.path[dial.path.length - 2].pos
+        : null;
+    if (!anchorForOptions) return null;
     if (!children?.length) return null;
-    const positions = placeChildren(idleAnchor, null, children.length, fanRadius);
-    return children.map((node, i) => ({ node, pos: positions[i] }));
-  }, [dial.phase, tree, idleAnchor, fanRadius]);
+    const positions = placeChildren(
+      anchorForOptions,
+      grandparentForOptions,
+      children.length,
+      fanRadius,
+      flowMode,
+    );
+    const fittedPositions = fitPositionsToStage(positions, stageSize, restingOptionPadding);
+    return children.map((node, i) => ({ node, pos: fittedPositions[i] }));
+  }, [
+    dial.phase,
+    dial.activeEntry,
+    dial.path,
+    tree,
+    idleAnchor,
+    fanRadius,
+    flowMode,
+    stageSize,
+    restingOptionPadding,
+  ]);
   // Keyboard handler — Enter applies (committed) OR commits focused option.
   // ArrowLeft/Right cycle the focused option clockwise/counter-clockwise.
   // ArrowUp focuses the option closest to 12 o'clock.
@@ -570,6 +646,7 @@ export function RadialDial({
         dial.activeEntry.pos,
         c.node.children.length,
         fanRadius,
+        flowMode,
       );
       previews.push({
         id: c.node.id,
@@ -578,7 +655,7 @@ export function RadialDial({
       });
     }
     return previews;
-  }, [dial.phase, dial.pointer, dial.activeEntry, clampedChildren, dial.homed, recentVelocity, recentAccel, fanRadius]);
+  }, [dial.phase, dial.pointer, dial.activeEntry, clampedChildren, dial.homed, recentVelocity, recentAccel, fanRadius, flowMode]);
 
   // Counter projection — when homed on an option whose share narrows count,
   // compute what the count WOULD become on commit. Shown inline next to
@@ -846,8 +923,7 @@ export function RadialDial({
             rootPos={idleAnchor}
             targetPos={{
               // Hint points toward the 12-o'clock option (first child).
-              x: idleAnchor.x,
-              y: idleAnchor.y - fanRadius * 0.7,
+              ...firstRunHintTarget(idleAnchor, fanRadius, flowMode),
             }}
             theme={theme}
             reduceMotion={reduceMotion}
@@ -887,9 +963,16 @@ export function RadialDial({
                 label={c.node.label}
                 icon={c.node.icon}
                 index={i}
-                proximity={Math.max(0.5, idleHoverProximity)}
+                proximity={dial.phase === 'committed' ? 0.82 : Math.max(0.5, idleHoverProximity)}
                 theme={theme}
-                onSelect={() => dial.selectChild(c.node, idleAnchor)}
+                onSelect={() =>
+                  dial.selectChild(
+                    c.node,
+                    dial.phase === 'idle' ? idleAnchor : undefined,
+                    c.pos,
+                  )
+                }
+                acceptPointer={dial.phase === 'committed'}
                 breathing={dial.phase === 'idle'}
                 reduceMotion={reduceMotion}
                 focused={focusedOptionIndex === i}

@@ -94,10 +94,25 @@ type RadialDialProps = {
   countLabel?: string;           // word after the count (e.g. "jobs")
   total?: number;                // if provided, computes a narrowing count
   toolbar?: React.ReactNode;     // slot for additional UI top-right
+  flowMode?: DialFlowMode;       // 'radial' | 'right-flow' | 'left-flow' | 'down-flow'
   onChange?: (payload: DialPathPayload) => void;
   onComplete?: (payload: DialPathPayload) => void;
+  onApply?: (payload: DialPathPayload) => void;
+  applyLabel?: string;
 };
 ```
+
+`flowMode` changes the geometry without changing the gesture engine:
+
+- `radial` — centered compass layout.
+- `right-flow` — main anchor sits left; every level opens to the right.
+- `left-flow` — main anchor sits right; every level opens to the left.
+- `down-flow` — main anchor sits high; options stack downward.
+
+Committed paths stay editable. Click a breadcrumb word or press `Escape` to
+walk back one level, then choose another option. When `onApply` is provided,
+the Apply CTA emits the current path without forcing consumers to treat every
+intermediate refinement as final.
 
 ## What's special
 
@@ -149,9 +164,10 @@ import {
 ```bash
 npm install
 npm run example      # vite dev server at :5173 with the demo page
+npm run test         # focused geometry tests
 npm run typecheck    # tsc --noEmit
 npm run build        # outputs dist/ with ESM + CJS + .d.ts
-npm run verify       # typecheck + build, used by CI
+npm run verify       # test + typecheck + build, used by CI
 ```
 
 ## Project

@@ -493,6 +493,7 @@ export function IdleGhost({
   proximity,
   theme,
   onSelect,
+  acceptPointer = false,
   breathing = true,
   reduceMotion = false,
   focused = false,
@@ -505,6 +506,8 @@ export function IdleGhost({
   theme: RadialDialTheme;
   /** Click commits this option directly. */
   onSelect?: () => void;
+  /** Whether pointer clicks should select directly instead of passing through. */
+  acceptPointer?: boolean;
   /** Whether to apply the slow idle breath (paused during drawing). Issue #312. */
   breathing?: boolean;
   /** Honor prefers-reduced-motion — no breath when true. */
@@ -546,7 +549,10 @@ export function IdleGhost({
       // every press. Keyboard still works: a focused option fires click with
       // detail === 0 (no pointer), which we commit here.
       onClick={e => {
-        if (e.detail === 0) onSelect?.();
+        if (e.detail === 0 || acceptPointer) onSelect?.();
+      }}
+      onPointerDown={e => {
+        if (acceptPointer) e.stopPropagation();
       }}
       disabled={!interactive}
       role="menuitem"
@@ -569,10 +575,10 @@ export function IdleGhost({
           : mix(theme.ink, 86),
         zIndex: focused ? 5 : 4,
         padding: 0,
-        // Hint only — presses pass through to the stage (one-system gesture).
-        // Keyboard focus + activation still work (pointer-events doesn't gate
-        // keyboard). The cursor stays 'grab' from the stage beneath.
-        pointerEvents: 'none',
+        // Idle hints pass through to the stage so press/tap remains one
+        // gesture. Committed-level refinement bubbles become real click targets.
+        pointerEvents: acceptPointer ? 'auto' : 'none',
+        cursor: acceptPointer ? 'pointer' : undefined,
         transitionProperty: 'box-shadow, color, border-color',
         transitionDuration: '200ms',
         transitionTimingFunction: `cubic-bezier(${SMOOTH_OUT.join(',')})`,

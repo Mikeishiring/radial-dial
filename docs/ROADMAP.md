@@ -8,7 +8,7 @@ standalone project rather than a one-off extraction from Web3 Jobs.
 - Standalone public GitHub repo: `https://github.com/Mikeishiring/radial-dial`
 - Package name: `@mikeishiring/radial-dial`
 - Library build: Vite, TypeScript, ESM, CJS, declaration output
-- Example app: Vite React demo under `example/`
+- Example app: Vite React demo under `example/`, including flow-mode test bench
 - Active GitHub charter: Water UI/UX issue set
 
 ## Expansion Priorities
@@ -28,6 +28,8 @@ The engine is the product core. This is the highest leverage technical work.
 
 - Add focused tests for `placeChildren`, count projection, path commit, undo, and
   reroute behavior.
+- Keep layout-mode tests for radial, left-to-right, right-to-left, and downward
+  option flow.
 - Split pure geometry/state transitions out of React hook plumbing where it
   materially improves testability.
 - Resolve the existing `bumpRender` refactor issue after tests protect the
