@@ -172,6 +172,7 @@ import type {
   DialBacktrackMode,
   DialFlowMode,
   DialGestureCommand,
+  DialInteractionPayload,
   DialPathPayload,
   RadialDialTheme,
   Vec,
@@ -225,6 +226,8 @@ export type RadialDialProps = {
   applyLabel?: string;
   /** Fired when the user draws a recognized command on empty paper. */
   onGestureCommand?: (command: DialGestureCommand) => void;
+  /** Fired as the radial control changes option-level interaction state. */
+  onInteractionChange?: (payload: DialInteractionPayload) => void;
 };
 
 export function RadialDial({
@@ -243,6 +246,7 @@ export function RadialDial({
   onApply,
   applyLabel = 'Apply',
   onGestureCommand,
+  onInteractionChange,
 }: RadialDialProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -728,6 +732,7 @@ export function RadialDial({
     const trajectoryBoost = Math.max(-0.25, Math.min(0.25, -recentAccel * 0.5));
     const previews: Array<{
       id: string;
+      label: string;
       origin: Vec;
       strength: number;
       children: Array<{ node: DialNode; pos: Vec }>;
@@ -785,6 +790,7 @@ export function RadialDial({
       );
       previews.push({
         id: c.node.id,
+        label: c.node.label,
         origin: c.pos,
         strength,
         children: c.node.children.map((node, i) => ({ node, pos: positions[i] })),
@@ -818,6 +824,54 @@ export function RadialDial({
     if (!homedNode || homedNode.share === undefined || homedNode.share === 1) return null;
     return count * homedNode.share;
   }, [count, dial.homed, dial.visibleChildren]);
+
+  const interactionPayload = useMemo<DialInteractionPayload>(() => {
+    const options = dial.phase === 'drawing'
+      ? clampedChildren
+      : persistentOptions ?? [];
+    const strongestPreview = proximityPreviews[0];
+    const homedLabel = dial.homed
+      ? options.find(option => option.node.id === dial.homed?.id)?.node.label
+      : undefined;
+    const mode =
+      dial.phase === 'drawing' && homedLabel
+        ? 'homing'
+        : strongestPreview
+          ? 'previewing'
+          : dial.phase === 'drawing'
+            ? 'drawing'
+            : dial.phase === 'committed'
+              ? 'committed-options'
+              : 'idle-options';
+    return {
+      mode,
+      phase: dial.phase,
+      depth: Math.max(0, dial.path.length - 1),
+      activeLabel: dial.activeEntry?.node.label ?? tree.label,
+      optionLabels: options.map(option => option.node.label),
+      homedLabel,
+      preview: strongestPreview
+        ? {
+            parentLabel: strongestPreview.label,
+            childLabels: strongestPreview.children.map(child => child.node.label),
+            strength: strongestPreview.strength,
+          }
+        : undefined,
+    };
+  }, [
+    clampedChildren,
+    dial.activeEntry,
+    dial.homed,
+    dial.path.length,
+    dial.phase,
+    persistentOptions,
+    proximityPreviews,
+    tree.label,
+  ]);
+
+  useEffect(() => {
+    onInteractionChange?.(interactionPayload);
+  }, [interactionPayload, onInteractionChange]);
 
   return (
     // LazyMotion loads the `domMax` feature bundle so the lightweight `m`

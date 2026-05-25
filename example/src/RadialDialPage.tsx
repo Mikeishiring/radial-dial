@@ -13,6 +13,7 @@ import type {
   DialBacktrackMode,
   DialFlowMode,
   DialGestureCommand,
+  DialInteractionPayload,
   DialNode,
   DialPathPayload,
   RadialDialTheme,
@@ -138,49 +139,55 @@ const FLOW_MODES: Array<{
 ];
 
 type FlowEvent = 'start' | 'choose' | 'refine' | 'change' | 'backtrack' | 'apply' | 'clear';
-type UxFlowStepId = 'orient' | 'preview' | 'commit' | 'change' | 'review' | 'apply';
+type RadialFlowStepId = 'rest' | 'approach' | 'commit' | 'branch' | 'backtrack' | 'leaf' | 'applied';
 
-const UX_FLOW_STEPS: Array<{
-  id: UxFlowStepId;
+const RADIAL_FLOW_STEPS: Array<{
+  id: RadialFlowStepId;
   label: string;
   trigger: string;
   result: string;
 }> = [
   {
-    id: 'orient',
-    label: 'Orient',
-    trigger: 'Start near Tune',
-    result: 'Top-level choices wait to the right.',
+    id: 'rest',
+    label: 'Rest',
+    trigger: 'Main bubble + siblings',
+    result: 'Options stay visible without forcing a grab.',
   },
   {
-    id: 'preview',
+    id: 'approach',
     label: 'Preview',
-    trigger: 'Drift near a choice',
-    result: 'Next layer blooms without changing state.',
+    trigger: 'Near an option',
+    result: 'Children bloom beside that option only.',
   },
   {
     id: 'commit',
     label: 'Commit',
-    trigger: 'Click or cross the lane',
-    result: 'Path extends and the count updates.',
+    trigger: 'Cross the lane',
+    result: 'Target becomes the active bubble.',
   },
   {
-    id: 'change',
-    label: 'Change',
-    trigger: 'Pull back or use a crumb',
-    result: 'Ink erases to the branch, then redirects.',
+    id: 'branch',
+    label: 'Branch',
+    trigger: 'Active node has children',
+    result: 'Next options align from that anchor.',
   },
   {
-    id: 'review',
-    label: 'Review',
-    trigger: 'Land on a leaf',
-    result: 'Results open with apply/change actions.',
+    id: 'backtrack',
+    label: 'Backtrack',
+    trigger: 'Pull inward',
+    result: 'Line erases to the previous anchor.',
   },
   {
-    id: 'apply',
-    label: 'Apply',
-    trigger: 'Confirm selection',
-    result: 'Final state is recorded; edits clear it.',
+    id: 'leaf',
+    label: 'Leaf',
+    trigger: 'No more children',
+    result: 'Review opens with Apply or Change.',
+  },
+  {
+    id: 'applied',
+    label: 'Applied',
+    trigger: 'Confirm path',
+    result: 'Same path hides duplicate Apply.',
   },
 ];
 
@@ -204,22 +211,39 @@ function samePath(a: DialNode[], b: DialNode[]) {
   return a.every((node, i) => node.id === b[i]?.id);
 }
 
-function uxStepFor({
+function radialStepFor({
+  interaction,
   currentPath,
   flowEvent,
   leafPath,
   lastApplied,
 }: {
+  interaction: DialInteractionPayload | null;
   currentPath: DialNode[];
   flowEvent: FlowEvent;
   leafPath: DialNode[] | null;
   lastApplied: DialPathPayload | null;
-}): UxFlowStepId {
-  if (lastApplied) return 'apply';
-  if (leafPath) return 'review';
-  if (flowEvent === 'backtrack' || flowEvent === 'change') return 'change';
-  if (currentPath.length > 0) return 'commit';
-  return flowEvent === 'clear' ? 'orient' : 'preview';
+}): RadialFlowStepId {
+  if (lastApplied) return 'applied';
+  if (leafPath) return 'leaf';
+  if (flowEvent === 'backtrack' || flowEvent === 'change') return 'backtrack';
+  if (interaction?.mode === 'previewing') return 'approach';
+  if (interaction?.mode === 'homing' || interaction?.mode === 'drawing') return 'commit';
+  if (currentPath.length > 0 || interaction?.mode === 'committed-options') return 'branch';
+  return 'rest';
+}
+
+function interactionSignature(payload: DialInteractionPayload) {
+  return [
+    payload.mode,
+    payload.phase,
+    payload.depth,
+    payload.activeLabel,
+    payload.homedLabel ?? '',
+    payload.preview?.parentLabel ?? '',
+    payload.preview?.childLabels.join('|') ?? '',
+    payload.optionLabels.join('|'),
+  ].join('::');
 }
 
 export function RadialDialPage() {
@@ -228,6 +252,7 @@ export function RadialDialPage() {
   const [backtrackMode, setBacktrackMode] = useState<DialBacktrackMode>('erase');
   const [currentPath, setCurrentPath] = useState<DialNode[]>([]);
   const [flowEvent, setFlowEvent] = useState<FlowEvent>('clear');
+  const [radialInteraction, setRadialInteraction] = useState<DialInteractionPayload | null>(null);
   // The last-applied payload — shown in a toast that auto-dismisses.
   const [lastApplied, setLastApplied] = useState<DialPathPayload | null>(null);
   const [lastGesture, setLastGesture] = useState<DialGestureCommand | null>(null);
@@ -249,7 +274,13 @@ export function RadialDialPage() {
     }, 5000);
   };
   const pathIsApplied = !!lastApplied && samePath(lastApplied.nodes, currentPath);
-  const activeUxStep = uxStepFor({ currentPath, flowEvent, leafPath, lastApplied });
+  const activeRadialStep = radialStepFor({
+    interaction: radialInteraction,
+    currentPath,
+    flowEvent,
+    leafPath,
+    lastApplied,
+  });
 
   return (
     <div
@@ -312,6 +343,13 @@ export function RadialDialPage() {
             cycleFlowMode(command === 'next-flow' ? 1 : -1);
           }
         }}
+        onInteractionChange={(payload: DialInteractionPayload) => {
+          setRadialInteraction(prev =>
+            prev && interactionSignature(prev) === interactionSignature(payload)
+              ? prev
+              : payload,
+          );
+        }}
         applyLabel="APPLY"
         toolbar={
           <DemoToolbar
@@ -336,7 +374,8 @@ export function RadialDialPage() {
         currentPath={currentPath}
         lastGesture={lastGesture}
         backtrackMode={backtrackMode}
-        activeUxStep={activeUxStep}
+        interaction={radialInteraction}
+        activeRadialStep={activeRadialStep}
         flowEvent={flowEvent}
       />
 
@@ -556,7 +595,8 @@ function FlowMapPanel({
   currentPath,
   lastGesture,
   backtrackMode,
-  activeUxStep,
+  interaction,
+  activeRadialStep,
   flowEvent,
 }: {
   theme: RadialDialTheme;
@@ -564,7 +604,8 @@ function FlowMapPanel({
   currentPath: DialNode[];
   lastGesture: DialGestureCommand | null;
   backtrackMode: DialBacktrackMode;
-  activeUxStep: UxFlowStepId;
+  interaction: DialInteractionPayload | null;
+  activeRadialStep: RadialFlowStepId;
   flowEvent: FlowEvent;
 }) {
   const isLight = theme.mode === 'light';
@@ -585,6 +626,17 @@ function FlowMapPanel({
       : lastGesture === 'previous-flow'
         ? 'Slash previous'
         : `${backtrackMode === 'erase' ? 'Erase' : 'Lift'} backtrack · slash layout`;
+  const visibleOptions = interaction?.optionLabels.length
+    ? interaction.optionLabels.join(' · ')
+    : 'No child options';
+  const previewText = interaction?.preview
+    ? `${interaction.preview.parentLabel} -> ${interaction.preview.childLabels.join(' · ')}`
+    : 'No child layer open';
+  const targetText = interaction?.homedLabel
+    ? `${interaction.homedLabel} is pulling toward the cursor`
+    : interaction?.activeLabel
+      ? `${interaction.activeLabel} is the current anchor`
+      : 'Tune is the current anchor';
 
   return (
     <motion.aside
@@ -621,14 +673,14 @@ function FlowMapPanel({
           color: mix(theme.ink, isLight ? 46 : 58),
         }}
       >
-        <span>V2 test</span>
+        <span>Radial state</span>
         <span style={{ color: theme.accent }}>{eventLabel}</span>
       </div>
 
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${UX_FLOW_STEPS.length}, 1fr)`,
+          gridTemplateColumns: `repeat(${RADIAL_FLOW_STEPS.length}, 1fr)`,
           gap: 0,
           marginBottom: 16,
           padding: '9px 2px 6px',
@@ -646,9 +698,9 @@ function FlowMapPanel({
             background: `linear-gradient(90deg, ${mix(theme.accent, 32)}, ${mix(theme.ink, isLight ? 14 : 22)})`,
           }}
         />
-        {UX_FLOW_STEPS.map((stage, index) => {
-          const activeIndex = UX_FLOW_STEPS.findIndex(step => step.id === activeUxStep);
-          const active = stage.id === activeUxStep;
+        {RADIAL_FLOW_STEPS.map((stage, index) => {
+          const activeIndex = RADIAL_FLOW_STEPS.findIndex(step => step.id === activeRadialStep);
+          const active = stage.id === activeRadialStep;
           const complete = index < activeIndex;
           return (
             <div
@@ -706,7 +758,7 @@ function FlowMapPanel({
             marginBottom: 5,
           }}
         >
-          Current path
+          Active anchor
         </div>
         <div
           style={{
@@ -717,8 +769,45 @@ function FlowMapPanel({
             color: activePath.length ? theme.ink : mix(theme.ink, isLight ? 45 : 55),
           }}
         >
-          {activePath.length ? activePath.join(' › ') : `${FLOW_MODES.find(f => f.id === flowMode)?.cue ?? 'ready'}`}
+          {activePath.length ? activePath.join(' > ') : `${interaction?.activeLabel ?? 'Tune'} · ${FLOW_MODES.find(f => f.id === flowMode)?.cue ?? 'ready'}`}
         </div>
+      </div>
+
+      <div
+        style={{
+          padding: '0 0 12px',
+          borderBottom: `1px solid ${mix(theme.ink, isLight ? 8 : 14)}`,
+          marginBottom: 11,
+          display: 'grid',
+          gap: 8,
+          fontFamily: theme.mono,
+          fontSize: 9,
+          letterSpacing: '0.08em',
+          color: mix(theme.ink, isLight ? 44 : 56),
+        }}
+      >
+        {[
+          ['Options', visibleOptions],
+          ['Preview', previewText],
+          ['Target', targetText],
+        ].map(([label, value]) => (
+          <div
+            key={label}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '68px 1fr',
+              gap: 10,
+              alignItems: 'baseline',
+            }}
+          >
+            <span style={{ textTransform: 'uppercase', letterSpacing: '0.12em', color: mix(theme.ink, isLight ? 34 : 46) }}>
+              {label}
+            </span>
+            <span style={{ lineHeight: 1.35, color: label === 'Preview' && interaction?.preview ? theme.accent : mix(theme.ink, isLight ? 58 : 66) }}>
+              {value}
+            </span>
+          </div>
+        ))}
       </div>
 
       <div
@@ -743,8 +832,8 @@ function FlowMapPanel({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {UX_FLOW_STEPS.map(step => {
-          const active = step.id === activeUxStep;
+        {RADIAL_FLOW_STEPS.map(step => {
+          const active = step.id === activeRadialStep;
           return (
             <div
               key={step.id}

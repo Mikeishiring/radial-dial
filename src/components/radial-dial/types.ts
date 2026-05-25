@@ -66,6 +66,28 @@ export type DialGestureCommand = 'reset' | 'next-flow' | 'previous-flow';
 /** How committed ink exits when the user backs out of a branch. */
 export type DialBacktrackMode = 'lift' | 'erase';
 
+/** Live option-level state for demos, inspectors, and custom chrome. */
+export type DialInteractionMode =
+  | 'idle-options'
+  | 'previewing'
+  | 'drawing'
+  | 'homing'
+  | 'committed-options';
+
+export type DialInteractionPayload = {
+  mode: DialInteractionMode;
+  phase: DialPhase;
+  depth: number;
+  activeLabel: string;
+  optionLabels: string[];
+  homedLabel?: string;
+  preview?: {
+    parentLabel: string;
+    childLabels: string[];
+    strength: number;
+  };
+};
+
 /** Where the dial is in its lifecycle. */
 export type DialPhase = 'idle' | 'drawing' | 'committed';
 
