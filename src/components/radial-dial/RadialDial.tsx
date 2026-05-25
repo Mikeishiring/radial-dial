@@ -228,6 +228,8 @@ export type RadialDialProps = {
   onGestureCommand?: (command: DialGestureCommand) => void;
   /** Fired as the radial control changes option-level interaction state. */
   onInteractionChange?: (payload: DialInteractionPayload) => void;
+  /** Show the one-shot dotted drag hint after idle. Defaults to true. */
+  showFirstRunHint?: boolean;
 };
 
 export function RadialDial({
@@ -247,6 +249,7 @@ export function RadialDial({
   applyLabel = 'Apply',
   onGestureCommand,
   onInteractionChange,
+  showFirstRunHint = true,
 }: RadialDialProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1170,7 +1173,7 @@ export function RadialDial({
 
         {/* First-run hint — one-shot dotted arc from root toward the first
             child, after 3s idle. Persisted via localStorage. Issue #9. */}
-        {dial.phase === 'idle' && stageSize.w > 0 && tree.children?.[0] && (
+        {showFirstRunHint && dial.phase === 'idle' && stageSize.w > 0 && tree.children?.[0] && (
           <FirstRunHint
             rootPos={idleAnchor}
             targetPos={{

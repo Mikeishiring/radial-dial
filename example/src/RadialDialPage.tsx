@@ -301,6 +301,7 @@ export function RadialDialPage() {
         total={TOTAL_MATCHES}
         flowMode={flowMode}
         backtrackMode={backtrackMode}
+        showFirstRunHint={false}
         onChange={({ nodes }: DialPathPayload) => {
           // Fired on every commit / undo as you drill through levels. When
           // the deepest node is a LEAF (no children), you've reached the end
