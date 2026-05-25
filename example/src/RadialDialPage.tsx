@@ -10,6 +10,7 @@ import {
   SMOOTH_OUT,
 } from '@mikeishiring/radial-dial';
 import type {
+  DialBacktrackMode,
   DialFlowMode,
   DialGestureCommand,
   DialNode,
@@ -163,6 +164,7 @@ function flowEventFor(prev: DialNode[], next: DialNode[]): FlowEvent {
 export function RadialDialPage() {
   const [theme, setTheme] = useState<RadialDialTheme>(PAPER_THEME);
   const [flowMode, setFlowMode] = useState<DialFlowMode>('right-flow');
+  const [backtrackMode, setBacktrackMode] = useState<DialBacktrackMode>('erase');
   const [currentPath, setCurrentPath] = useState<DialNode[]>([]);
   const [flowEvent, setFlowEvent] = useState<FlowEvent>('clear');
   // The last-applied payload — shown in a toast that auto-dismisses.
@@ -197,6 +199,7 @@ export function RadialDialPage() {
         countLabel="matches"
         total={TOTAL_MATCHES}
         flowMode={flowMode}
+        backtrackMode={backtrackMode}
         onChange={({ nodes }: DialPathPayload) => {
           // Fired on every commit / undo as you drill through levels. When
           // the deepest node is a LEAF (no children), you've reached the end
@@ -244,7 +247,9 @@ export function RadialDialPage() {
           <DemoToolbar
             theme={theme}
             flowMode={flowMode}
+            backtrackMode={backtrackMode}
             onFlowModeChange={setFlowMode}
+            onBacktrackModeChange={setBacktrackMode}
             onThemeChange={setTheme}
           />
         }
@@ -261,6 +266,7 @@ export function RadialDialPage() {
         currentPath={currentPath}
         lastApplied={lastApplied}
         lastGesture={lastGesture}
+        backtrackMode={backtrackMode}
         flowEvent={flowEvent}
       />
 
@@ -294,18 +300,107 @@ export function RadialDialPage() {
 function DemoToolbar({
   theme,
   flowMode,
+  backtrackMode,
   onFlowModeChange,
+  onBacktrackModeChange,
   onThemeChange,
 }: {
   theme: RadialDialTheme;
   flowMode: DialFlowMode;
+  backtrackMode: DialBacktrackMode;
   onFlowModeChange: (mode: DialFlowMode) => void;
+  onBacktrackModeChange: (mode: DialBacktrackMode) => void;
   onThemeChange: (theme: RadialDialTheme) => void;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+        justifyContent: 'flex-end',
+        maxWidth: 640,
+      }}
+    >
       <FlowModeSwitcher theme={theme} value={flowMode} onChange={onFlowModeChange} />
+      <StrokeModeSwitcher theme={theme} value={backtrackMode} onChange={onBacktrackModeChange} />
       <ThemeSwitcher theme={theme} onChange={onThemeChange} />
+    </div>
+  );
+}
+
+function StrokeModeSwitcher({
+  theme,
+  value,
+  onChange,
+}: {
+  theme: RadialDialTheme;
+  value: DialBacktrackMode;
+  onChange: (mode: DialBacktrackMode) => void;
+}) {
+  const modes: Array<{ id: DialBacktrackMode; label: string }> = [
+    { id: 'erase', label: 'Erase' },
+    { id: 'lift', label: 'Lift' },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Backtrack ink"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        position: 'relative',
+        padding: 3,
+        gap: 2,
+        background: mix(theme.ink, theme.mode === 'light' ? 4 : 8, theme.paper),
+        border: `1px solid ${mix(theme.ink, theme.mode === 'light' ? 10 : 18)}`,
+        borderRadius: 999,
+        fontFamily: theme.mono,
+        fontSize: 9,
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase',
+      }}
+    >
+      {modes.map(mode => {
+        const active = mode.id === value;
+        return (
+          <motion.button
+            key={mode.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(mode.id)}
+            aria-label={`${mode.label} backtrack ink`}
+            whileTap={{ scale: 0.94 }}
+            transition={{ duration: 0.1 }}
+            style={{
+              position: 'relative',
+              padding: '4px 9px',
+              borderRadius: 999,
+              background: 'transparent',
+              color: active ? theme.accent : mix(theme.ink, 58),
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            {active && (
+              <motion.span
+                layoutId="stroke-mode-indicator"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  borderRadius: 999,
+                  background: mix(theme.accent, 16),
+                  boxShadow: `inset 0 0 0 1px ${mix(theme.accent, 28)}`,
+                }}
+                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+              />
+            )}
+            <span style={{ position: 'relative', zIndex: 1 }}>{mode.label}</span>
+          </motion.button>
+        );
+      })}
     </div>
   );
 }
@@ -387,6 +482,7 @@ function FlowMapPanel({
   currentPath,
   lastApplied,
   lastGesture,
+  backtrackMode,
   flowEvent,
 }: {
   theme: RadialDialTheme;
@@ -394,6 +490,7 @@ function FlowMapPanel({
   currentPath: DialNode[];
   lastApplied: DialPathPayload | null;
   lastGesture: DialGestureCommand | null;
+  backtrackMode: DialBacktrackMode;
   flowEvent: FlowEvent;
 }) {
   const isLight = theme.mode === 'light';
@@ -419,7 +516,7 @@ function FlowMapPanel({
       ? 'Slash next'
       : lastGesture === 'previous-flow'
         ? 'Slash previous'
-        : 'Circle reset · slash layout';
+        : `${backtrackMode === 'erase' ? 'Erase' : 'Lift'} backtrack · slash layout`;
 
   return (
     <motion.aside
@@ -431,12 +528,12 @@ function FlowMapPanel({
         left: 28,
         top: 92,
         zIndex: 27,
-        width: 292,
-        padding: 16,
+        width: 318,
+        padding: '18px 18px 16px',
         borderRadius: 10,
-        background: `color-mix(in srgb, ${theme.paper} ${isLight ? 78 : 68}%, transparent)`,
+        background: `color-mix(in srgb, ${theme.paper} ${isLight ? 72 : 64}%, transparent)`,
         border: `1px solid ${mix(theme.ink, isLight ? 10 : 18)}`,
-        boxShadow: `0 14px 38px ${mix(theme.ink, isLight ? 9 : 28)}`,
+        boxShadow: `0 18px 48px ${mix(theme.ink, isLight ? 8 : 26)}`,
         backdropFilter: 'blur(18px) saturate(135%)',
         WebkitBackdropFilter: 'blur(18px) saturate(135%)',
         pointerEvents: 'none',
@@ -460,8 +557,28 @@ function FlowMapPanel({
         <span style={{ color: theme.accent }}>{eventLabel}</span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 14 }}>
-        {stageLabels.map((stage, i) => {
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: 0,
+          marginBottom: 18,
+          padding: '9px 2px 3px',
+          position: 'relative',
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: 26,
+            right: 26,
+            top: 18,
+            height: 1,
+            background: `linear-gradient(90deg, ${mix(theme.accent, 32)}, ${mix(theme.ink, isLight ? 14 : 22)})`,
+          }}
+        />
+        {stageLabels.map(stage => {
           const active =
             (stage.id === 'choose' && currentPath.length > 0) ||
             (stage.id === 'refine' && currentPath.length > 1) ||
@@ -471,11 +588,7 @@ function FlowMapPanel({
             <div
               key={stage.id}
               style={{
-                minHeight: 44,
-                padding: '7px 6px',
-                borderRadius: 8,
-                background: active ? mix(theme.accent, 12) : mix(theme.ink, isLight ? 4 : 8, 'transparent'),
-                border: `1px solid ${active ? mix(theme.accent, 30) : mix(theme.ink, isLight ? 9 : 16)}`,
+                minHeight: 40,
                 color: active ? theme.accent : mix(theme.ink, isLight ? 48 : 56),
                 fontFamily: theme.mono,
                 fontSize: 9,
@@ -486,22 +599,23 @@ function FlowMapPanel({
                 justifyContent: 'center',
                 textAlign: 'center',
                 position: 'relative',
+                gap: 8,
               }}
             >
-              {i > 0 && (
-                <span
-                  aria-hidden
-                  style={{
-                    position: 'absolute',
-                    left: -7,
-                    top: '50%',
-                    width: 7,
-                    height: 1,
-                    background: mix(theme.ink, isLight ? 14 : 20),
-                  }}
-                />
-              )}
-              {stage.label}
+              <span
+                aria-hidden
+                style={{
+                  width: active ? 11 : 7,
+                  height: active ? 11 : 7,
+                  borderRadius: '50%',
+                  background: active ? theme.accent : theme.paper,
+                  border: `1px solid ${active ? mix(theme.accent, 42) : mix(theme.ink, isLight ? 18 : 26)}`,
+                  boxShadow: active ? `0 0 0 5px ${mix(theme.accent, 10)}` : `0 0 0 3px ${mix(theme.paper, 75, 'transparent')}`,
+                  transition: 'width 180ms cubic-bezier(0.22,1,0.36,1), height 180ms cubic-bezier(0.22,1,0.36,1)',
+                  zIndex: 1,
+                }}
+              />
+              <span>{stage.label}</span>
             </div>
           );
         })}
@@ -509,12 +623,10 @@ function FlowMapPanel({
 
       <div
         style={{
-          minHeight: 52,
-          padding: '10px 12px',
-          borderRadius: 8,
-          background: mix(theme.ink, isLight ? 4 : 8, 'transparent'),
-          border: `1px solid ${mix(theme.ink, isLight ? 9 : 16)}`,
-          marginBottom: 12,
+          minHeight: 48,
+          padding: '0 0 13px',
+          borderBottom: `1px solid ${mix(theme.ink, isLight ? 9 : 16)}`,
+          marginBottom: 11,
         }}
       >
         <div
@@ -544,12 +656,10 @@ function FlowMapPanel({
 
       <div
         style={{
-          minHeight: 34,
-          padding: '7px 10px',
-          borderRadius: 8,
-          background: lastGesture ? mix(theme.accent, 10) : mix(theme.ink, isLight ? 3 : 7, 'transparent'),
-          border: `1px solid ${lastGesture ? mix(theme.accent, 28) : mix(theme.ink, isLight ? 8 : 14)}`,
-          marginBottom: 12,
+          minHeight: 28,
+          padding: '0 0 12px',
+          borderBottom: `1px solid ${mix(theme.ink, isLight ? 8 : 14)}`,
+          marginBottom: 11,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',

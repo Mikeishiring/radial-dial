@@ -63,6 +63,9 @@ export type DialFlowMode = 'radial' | 'right-flow' | 'left-flow' | 'down-flow';
 /** Shape gestures drawn on empty paper outside the dial's live target zones. */
 export type DialGestureCommand = 'reset' | 'next-flow' | 'previous-flow';
 
+/** How committed ink exits when the user backs out of a branch. */
+export type DialBacktrackMode = 'lift' | 'erase';
+
 /** Where the dial is in its lifecycle. */
 export type DialPhase = 'idle' | 'drawing' | 'committed';
 

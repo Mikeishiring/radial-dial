@@ -169,6 +169,7 @@ import {
 import { classifyGestureCommand } from './gesture-commands';
 import type {
   DialNode,
+  DialBacktrackMode,
   DialFlowMode,
   DialGestureCommand,
   DialPathPayload,
@@ -208,6 +209,8 @@ export type RadialDialProps = {
    * level open to the right; useful for test benches and left-to-right tools.
    */
   flowMode?: DialFlowMode;
+  /** How removed committed ink exits when the user backs out. */
+  backtrackMode?: DialBacktrackMode;
   /** Fired on every commit/undo. */
   onChange?: (payload: DialPathPayload) => void;
   /** Fired on release if any commits exist. */
@@ -234,6 +237,7 @@ export function RadialDial({
   total,
   toolbar,
   flowMode = 'radial',
+  backtrackMode = 'lift',
   onChange,
   onComplete,
   onApply,
@@ -299,6 +303,7 @@ export function RadialDial({
     commitDistance,
     fanRadius,
     flowMode,
+    backtrackMode,
     onChange,
     onComplete,
   });
@@ -1019,6 +1024,7 @@ export function RadialDial({
                 toIsActive={i === dial.frozenStrokes.length - 1 && dial.phase !== 'drawing'}
                 index={i}
                 total={dial.frozenStrokes.length}
+                exitMode={backtrackMode}
                 theme={theme}
               />
             ))}

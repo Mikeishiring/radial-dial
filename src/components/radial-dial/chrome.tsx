@@ -87,7 +87,7 @@ export function PathLine({
       aria-atomic="true"
       aria-label="Current selection"
       className={`absolute left-1/2 z-20 -translate-x-1/2 flex items-baseline ${interactive ? '' : 'pointer-events-none'}`}
-      style={{ top: 56, gap: 0 }}
+      style={{ top: 68, gap: 0 }}
     >
       {count !== null && (
         <>
@@ -334,8 +334,8 @@ export function ApplyButton({
   return (
     <m.div
       className="absolute left-1/2 z-20 -translate-x-1/2"
-      // Positioned just under PathLine (top: 56) — give it air to breathe.
-      style={{ top: 96 }}
+      // Positioned just under PathLine (top: 68) — give it air to breathe.
+      style={{ top: 108 }}
       initial={{ opacity: 0, y: -8, scale: 0.92 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -4, scale: 0.96 }}

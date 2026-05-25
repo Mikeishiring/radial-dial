@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { appendPoint } from './ink';
 import type {
-  DialNode,
+  DialBacktrackMode,
   DialFlowMode,
+  DialNode,
   DialPathEntry,
   DialPathPayload,
   DialPhase,
@@ -27,6 +28,8 @@ type Options = {
   tree: DialNode;
   /** Geometry mode for child placement. */
   flowMode?: DialFlowMode;
+  /** How removed committed ink should leave during a backtrack. */
+  backtrackMode?: DialBacktrackMode;
   /** Px the cursor must travel from active before the closest child commits. */
   commitDistance?: number;
   /** Hysteresis re-arm threshold (must escape this radius). */
@@ -50,6 +53,7 @@ const DEFAULTS = {
   angularTolerance: Math.PI / 4.5,
   fanRadius: 224,
   flowMode: 'radial' as DialFlowMode,
+  backtrackMode: 'lift' as DialBacktrackMode,
 };
 
 /**
@@ -69,6 +73,7 @@ export function useRadialDial({
   angularTolerance = DEFAULTS.angularTolerance,
   fanRadius = DEFAULTS.fanRadius,
   flowMode = DEFAULTS.flowMode,
+  backtrackMode = DEFAULTS.backtrackMode,
   onChange,
   onComplete,
 }: Options) {
@@ -92,8 +97,10 @@ export function useRadialDial({
   const phaseRef = useRef<DialPhase>('idle');
   const fanRadiusRef = useRef(fanRadius);
   const flowModeRef = useRef<DialFlowMode>(flowMode);
+  const backtrackModeRef = useRef<DialBacktrackMode>(backtrackMode);
   fanRadiusRef.current = fanRadius;
   flowModeRef.current = flowMode;
+  backtrackModeRef.current = backtrackMode;
   // Force re-render when liveStroke ref changes; avoids state churn at 120Hz.
   const [, bumpRender] = useReducer((n: number) => n + 1, 0);
 
@@ -216,10 +223,17 @@ export function useRadialDial({
       // Reverse-drag undo.
       if (dist < undoRadius && livePath.length > 1) {
         const newPath = livePath.slice(0, -1);
+        const newActive = newPath[newPath.length - 1];
+        const now = performance.now();
         pathRef.current = newPath;
         setPath(newPath);
         setFrozenStrokes(prev => prev.slice(0, -1));
-        liveStrokeRef.current = [{ ...p, t: performance.now(), v: 0 }];
+        liveStrokeRef.current = backtrackModeRef.current === 'erase' && newActive
+          ? [
+              { ...newActive.pos, t: now, v: 0 },
+              { ...p, t: now + 1, v: 0 },
+            ]
+          : [{ ...p, t: now, v: 0 }];
         rawHistoryRef.current = [p];
         armedRef.current = false;
         onChange?.({ nodes: newPath.slice(1).map(e => e.node) });

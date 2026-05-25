@@ -16,7 +16,13 @@ import {
   SMOOTH_OUT,
   eased,
 } from './geometry';
-import type { FrozenStroke, InkPoint, RadialDialTheme, Vec } from './types';
+import type {
+  DialBacktrackMode,
+  FrozenStroke,
+  InkPoint,
+  RadialDialTheme,
+  Vec,
+} from './types';
 
 /**
  * Ink layers — React components that render the dial's ink trail.
@@ -43,6 +49,7 @@ export function FrozenStrokeLayer({
   toIsActive,
   index = 0,
   total = 1,
+  exitMode = 'lift',
   theme,
 }: {
   stroke: FrozenStroke;
@@ -54,6 +61,8 @@ export function FrozenStrokeLayer({
   index?: number;
   /** Total committed strokes — drives age fade. */
   total?: number;
+  /** Whether removed strokes lift away or erase back through the paper. */
+  exitMode?: DialBacktrackMode;
   theme: RadialDialTheme;
 }) {
   // Age fade: oldest stroke at 0.78 opacity, newest at 1.0. Linear gradient
@@ -94,18 +103,37 @@ export function FrozenStrokeLayer({
     return pts;
   }, [stroke.points, fromPos, toPos, toIsActive]);
   if (trimmed.length < 2) return null;
+  const fullPath = inkFullPath(trimmed);
   // Trail lift on commit: stroke arrives from below by 4px and rises into
   // place with overshoot — the page acknowledges the path arriving.
-  // On reset/undo (exit), drifts upward 20px and fades — like wisps lifting.
+  // On reset/undo (exit), either drifts away or is covered by a paper-colored
+  // pass that reads like the line being erased back to the branch point.
   return (
     <m.g
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: ageFade, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
+      exit={exitMode === 'erase' ? { opacity: ageFade, y: 0 } : { opacity: 0, y: -20 }}
       transition={{ duration: 0.5, ease: OVERSHOOT }}
     >
       <StrokeSegments points={trimmed} theme={theme} widthMultiplier={settleScale} />
       <StrokeDrawIn points={trimmed} theme={theme} />
+      {exitMode === 'erase' && fullPath && (
+        <m.path
+          d={fullPath}
+          pathLength={1}
+          fill="none"
+          stroke={theme.paper}
+          strokeWidth={INK_BASE_WIDTH * 6.8}
+          strokeOpacity={0.96}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray="1 1"
+          initial={{ opacity: 0, strokeDashoffset: 1 }}
+          animate={{ opacity: 0, strokeDashoffset: 1 }}
+          exit={{ opacity: 1, strokeDashoffset: 0 }}
+          transition={{ duration: 0.38, ease: SMOOTH_OUT }}
+        />
+      )}
       {toPos && <InkDropPool pos={toPos} bornAt={stroke.frozenAt} theme={theme} />}
     </m.g>
   );
