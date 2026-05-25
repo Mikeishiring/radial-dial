@@ -14,7 +14,7 @@ import {
   PaperWarp,
   SettleRipples,
 } from './atmosphere';
-import { ApplyButton, PathLine, ResetButton } from './chrome';
+import { ApplyButton, BackButton, PathLine, ResetButton } from './chrome';
 import {
   ACTIVE_TRIM_RADIUS,
   COMMIT_DISTANCE,
@@ -185,7 +185,7 @@ function ContinuationHint({
       exit={{ opacity: 0, y: above ? 4 : -4 }}
       transition={{ duration: 0.28, ease: SMOOTH_OUT }}
     >
-      hold here for next level
+      hold here for next level · back steps out
     </m.div>
   );
 }
@@ -843,6 +843,13 @@ export function RadialDial({
           Slides in beneath the PathLine; click or Enter fires the payload.
           Issue #12. */}
       <AnimatePresence>
+        {dial.phase === 'committed' && dial.path.length > 1 && (
+          <BackButton
+            key="back"
+            theme={theme}
+            onClick={dial.popBack}
+          />
+        )}
         {onApply && dial.phase === 'committed' && dial.path.length > 1 && (
           <ApplyButton
             theme={theme}

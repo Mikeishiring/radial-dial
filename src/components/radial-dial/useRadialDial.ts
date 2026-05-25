@@ -536,25 +536,35 @@ export function useRadialDial({
     [reset, onChange],
   );
 
+  const popBack = useCallback(() => {
+    const len = pathRef.current.length;
+    if (len <= 2) reset();
+    else popToLevel(len - 3);
+  }, [reset, popToLevel]);
+
   // Escape — single global authority for back-out. Pops exactly ONE level
-  // (incremental "refine"); repeated presses walk back to idle. This is a
-  // window listener so it works regardless of which element has focus (the
-  // stage, a results panel, etc.). The stage's own onKeyDown intentionally
-  // does NOT handle Escape, to avoid a double-pop.
+  // (incremental "refine"); repeated presses walk back to idle. Backspace is
+  // included as the visible Back button's keyboard twin. This is a window
+  // listener so it works regardless of which element has focus (the stage, a
+  // results panel, etc.). The stage's own onKeyDown intentionally does NOT
+  // handle Escape, to avoid a double-pop.
   //
   // popToLevel(breadcrumbIndex) keeps path up to path[breadcrumbIndex+1], so
   // to drop just the last entry we pass (len - 3); at the root (len <= 2)
   // that resolves to a full reset to idle.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      const len = pathRef.current.length;
-      if (len <= 2) reset();
-      else popToLevel(len - 3);
+      if (e.key !== 'Escape' && e.key !== 'Backspace') return;
+      if (e.key === 'Backspace') {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+      }
+      popBack();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reset, popToLevel]);
+  }, [popBack]);
 
   return {
     // state
@@ -574,6 +584,7 @@ export function useRadialDial({
     onPointerMove,
     onPointerUp,
     reset,
+    popBack,
     popToLevel,
     selectChild,
   };

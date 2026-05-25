@@ -9,6 +9,7 @@ import type { DialNode, RadialDialTheme } from './types';
  *   - PathLine: the prose breadcrumb + counter ("≈ 9,088 jobs · salary › $100–150k")
  *   - PathWord: clickable word inside the prose path
  *   - AnimatedNumber: a number that smoothly rolls to its target
+ *   - BackButton: small reversible-step control under the prose path
  *   - ResetButton: small accent-bordered control top-right
  *
  * Extracted from RadialDial.tsx because they're "dumb" display components —
@@ -333,9 +334,9 @@ export function ApplyButton({
       : '';
   return (
     <m.div
-      className="absolute left-1/2 z-20 -translate-x-1/2"
+      className="absolute z-20"
       // Positioned just under PathLine (top: 56) — give it air to breathe.
-      style={{ top: 96 }}
+      style={{ top: 96, left: 'calc(50% + 8px)' }}
       initial={{ opacity: 0, y: -8, scale: 0.92 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -4, scale: 0.96 }}
@@ -395,6 +396,74 @@ export function ApplyButton({
             {countStr.trim()}
           </span>
         )}
+      </m.button>
+    </m.div>
+  );
+}
+
+// =============================================================================
+// BackButton — visible one-step undo. It mirrors Escape/Backspace for users who
+// are inspecting the committed path and need an obvious way to step backward.
+// =============================================================================
+export function BackButton({
+  theme,
+  onClick,
+}: {
+  theme: RadialDialTheme;
+  onClick: () => void;
+}) {
+  const isLight = theme.mode === 'light';
+  return (
+    <m.div
+      className="absolute z-20"
+      style={{ top: 96, right: 'calc(50% + 8px)' }}
+      initial={{ opacity: 0, y: -8, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -4, scale: 0.96 }}
+      transition={{ duration: 0.24, ease: SMOOTH_OUT }}
+    >
+      <m.button
+        type="button"
+        onClick={onClick}
+        aria-label="Go back one level"
+        title="Go back one level"
+        className="focus-visible:outline-none"
+        style={{
+          padding: '8px 14px',
+          fontSize: 11,
+          letterSpacing: '0.11em',
+          textTransform: 'uppercase',
+          fontFamily: theme.mono,
+          color: mix(theme.ink, isLight ? 66 : 72),
+          background: mix(theme.ink, isLight ? 4 : 10, 'transparent'),
+          border: `1px solid ${mix(theme.ink, isLight ? 16 : 26)}`,
+          borderRadius: 999,
+          cursor: 'pointer',
+          boxShadow: `0 5px 16px ${mix(theme.ink, isLight ? 8 : 22)}`,
+          transitionProperty: 'background, border-color, color, transform, box-shadow',
+          transitionDuration: '180ms',
+          transitionTimingFunction: `cubic-bezier(${SMOOTH_OUT.join(',')})`,
+        }}
+        whileHover={{ scale: 1.03, y: -1 }}
+        whileTap={{ scale: 0.94 }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = mix(theme.accent, 8);
+          e.currentTarget.style.borderColor = mix(theme.accent, 34);
+          e.currentTarget.style.color = theme.accent;
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = mix(theme.ink, isLight ? 4 : 10, 'transparent');
+          e.currentTarget.style.borderColor = mix(theme.ink, isLight ? 16 : 26);
+          e.currentTarget.style.color = mix(theme.ink, isLight ? 66 : 72);
+        }}
+        onFocus={e => {
+          e.currentTarget.style.boxShadow = `0 0 0 3px ${mix(theme.accent, 24)}, 0 5px 16px ${mix(theme.ink, isLight ? 8 : 22)}`;
+        }}
+        onBlur={e => {
+          e.currentTarget.style.boxShadow = `0 5px 16px ${mix(theme.ink, isLight ? 8 : 22)}`;
+        }}
+      >
+        back
       </m.button>
     </m.div>
   );

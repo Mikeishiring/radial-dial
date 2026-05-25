@@ -27,9 +27,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node scripts/copy-css.mjs",
+    "build:demo": "vite build --config example/vite.config.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "example": "vite --config example/vite.config.ts",
+    "deploy:demo": "npm run build:demo && npx wrangler pages deploy example/dist --project-name radial-dial --branch main --commit-dirty=true",
     "lint": "echo \"(no linter configured yet)\""
   },
   "peerDependencies": {

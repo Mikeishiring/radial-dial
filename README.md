@@ -4,6 +4,18 @@
 
 A radial dial is a fast, gestural way to navigate nested choices. Press the root, drag toward an option to commit it, then keep drawing to commit the next level — the path traces an ink line you can see, undo, and re-route. Tap also works. Drop the component in, give it a tree of options, and listen for `onChange` / `onComplete`.
 
+## Project boundary
+
+This repo is the reusable Radial Dials component/library: `@mikeishiring/radial-dial`. It is a design/interaction primitive: a tool for building gesture-based hierarchical choice, not a standalone product domain.
+
+It is not Sorting Hat, Radial Controls, or Shape Onboarding. Those projects may borrow the press-drag-release interaction grammar, but this repo should stay focused on primitive behavior, API design, accessibility, motion, packaging, and the demo surface.
+
+Deployment status:
+
+- GitHub: `https://github.com/Mikeishiring/radial-dial`
+- Local demo: `npm run example -- --host 127.0.0.1 --port 4321`
+- Cloudflare Pages demo: `https://radial-dial.pages.dev/`
+
 ```
 press ▶ draw ▶ release
    │      │       │
@@ -102,6 +114,7 @@ type RadialDialProps = {
 ## What's special
 
 - **Marking menu, not radial menu.** The path is the gesture. Drag traces an ink line you can see, undo (drag back), or re-route (commit, then redirect).
+- **Reversible by design.** The committed state exposes Back, Backspace, Escape, and breadcrumb/planet stepping so users can refine a path without restarting.
 - **Three sacred easings** — overshoot, smooth-out, expo-out — applied consistently, asymmetric timing (entrance slower than exit). The dial feels like one thing because it moves like one thing.
 - **Color via `color-mix()`** — one accent hex per theme generates all derivations (fills, hovers, glows, borders). No palette duplication.
 - **Live count projection.** When `total` is set and `share` is on the children, the readout shows what the count would be on commit.
@@ -148,9 +161,11 @@ import {
 
 ```bash
 npm install
-npm run example      # vite dev server at :5173 with the demo page
+npm run example      # vite dev server with the demo page
 npm run typecheck    # tsc --noEmit
 npm run build        # outputs dist/ with ESM + CJS + .d.ts
+npm run build:demo   # outputs example/dist for the demo page
+npm run deploy:demo  # deploys the demo to Cloudflare Pages project radial-dial
 ```
 
 ## Status & roadmap
