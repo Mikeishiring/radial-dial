@@ -57,6 +57,37 @@ export type RadialDialTheme = {
   mode: 'light' | 'dark';
 };
 
+/** How child options are arranged as the user walks the hierarchy. */
+export type DialFlowMode = 'radial' | 'right-flow' | 'left-flow' | 'down-flow';
+
+/** Shape gestures drawn on empty paper outside the dial's live target zones. */
+export type DialGestureCommand = 'reset' | 'next-flow' | 'previous-flow';
+
+/** How committed ink exits when the user backs out of a branch. */
+export type DialBacktrackMode = 'lift' | 'erase';
+
+/** Live option-level state for demos, inspectors, and custom chrome. */
+export type DialInteractionMode =
+  | 'idle-options'
+  | 'previewing'
+  | 'drawing'
+  | 'homing'
+  | 'committed-options';
+
+export type DialInteractionPayload = {
+  mode: DialInteractionMode;
+  phase: DialPhase;
+  depth: number;
+  activeLabel: string;
+  optionLabels: string[];
+  homedLabel?: string;
+  preview?: {
+    parentLabel: string;
+    childLabels: string[];
+    strength: number;
+  };
+};
+
 /** Where the dial is in its lifecycle. */
 export type DialPhase = 'idle' | 'drawing' | 'committed';
 

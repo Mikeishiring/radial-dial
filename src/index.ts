@@ -24,7 +24,12 @@ export {
 } from './components/radial-dial/useRadialDial';
 
 export type {
+  DialBacktrackMode,
   DialNode,
+  DialFlowMode,
+  DialGestureCommand,
+  DialInteractionMode,
+  DialInteractionPayload,
   DialPathEntry,
   DialPathPayload,
   DialPhase,
